@@ -84,14 +84,14 @@ export default function LoginPage({ onNavigate, onLoginSuccess }) {
           </button>
         </div>
 
-        {/* Bottom Hero Pitch matching VidPro exactly */}
+        {/* Bottom Hero Pitch with true AssetBridge tagline from PDF */}
         <div className="relative z-10 max-w-lg pb-4">
           <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-white leading-[1.15] mb-4">
-            Edit Smarter. Export Faster.<br />
-            Create Anywhere.
+            Own More. Trade Smarter.<br />
+            Invest Without Boundaries.
           </h1>
           <p className="text-sm sm:text-base text-gray-300 leading-relaxed font-normal mb-8 max-w-md">
-            From quick social media transfers to full-length portfolio investing, our powerful platform lets you work seamlessly across borders.
+            Trade global markets. Send money anywhere. One mobile wallet for peer-to-peer stablecoin payments, community savings pots, and live tokenised equities.
           </p>
 
           {/* Carousel Dot Indicators */}
@@ -113,7 +113,7 @@ export default function LoginPage({ onNavigate, onLoginSuccess }) {
               Welcome Back!
             </h2>
             <p className="text-sm text-gray-500 font-normal">
-              Log in to start creating stunning videos with ease.
+              Log in to manage your wallet, pots, and trades.
             </p>
           </div>
 
