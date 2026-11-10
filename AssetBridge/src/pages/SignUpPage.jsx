@@ -1,83 +1,95 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, ArrowLeft, Loader2, CheckCircle2, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, ArrowLeft, Loader2, ShieldCheck } from 'lucide-react';
 import { authService } from '../services/authService';
+import { walletClientService } from '../services/walletClientService';
 
 export default function SignUpPage({ onNavigate, onSignUpSuccess }) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [agreeTerms, setAgreeTerms] = useState(true);
+  const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-
-  // Password Strength Calculation
-  const getPasswordStrength = (pass) => {
-    let score = 0;
-    if (!pass) return { score: 0, label: '', color: 'bg-gray-200' };
-    if (pass.length >= 8) score += 1;
-    if (/[A-Z]/.test(pass)) score += 1;
-    if (/[0-9]/.test(pass)) score += 1;
-    if (/[^A-Za-z0-9]/.test(pass)) score += 1;
-
-    if (score <= 1) return { score: 1, label: 'Weak', color: 'bg-rose-500' };
-    if (score === 2) return { score: 2, label: 'Fair', color: 'bg-amber-500' };
-    if (score === 3) return { score: 3, label: 'Good', color: 'bg-blue-500' };
-    return { score: 4, label: 'Strong', color: 'bg-emerald-500' };
-  };
-
-  const strength = getPasswordStrength(password);
 
   const handleSignUp = async (e) => {
     e.preventDefault();
     setErrorMsg('');
 
-    if (password.length < 8) {
-      setErrorMsg('Password must be at least 8 characters long for account safety.');
-      return;
-    }
     if (password !== confirmPassword) {
       setErrorMsg('Passwords do not match. Please re-type.');
       return;
     }
-    if (strength.score < 2) {
-      setErrorMsg('Please choose a stronger password with a mix of letters, numbers, and symbols.');
-      return;
-    }
-    if (!agreeTerms) {
-      setErrorMsg('Please agree to the Terms of Service to create your account.');
+    if (password.length < 6) {
+      setErrorMsg('Password should be at least 6 characters.');
       return;
     }
 
     setIsLoading(true);
     try {
       const result = await authService.signUp(email, password, fullName);
+      // Cryptographically generate/bind their Tether (USDT) wallet address upon registration
+      await walletClientService.getOrCreateWallet(result.user);
       onSignUpSuccess(result.user);
     } catch (err) {
-      setErrorMsg(err.message || 'Registration failed. Please check details.');
+      setErrorMsg(err.message || 'Registration failed. Please check your details.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleSignUp = async () => {
+    setIsLoading(true);
+    try {
+      const result = await authService.signUp('zoia@assetbridge.africa', 'Password123!', 'Zoia M.');
+      await walletClientService.getOrCreateWallet(result.user);
+      onSignUpSuccess(result.user);
+    } catch (err) {
+      setErrorMsg(err.message || 'Google sign-up failed.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen w-full flex bg-[#0c0e14] text-gray-100 font-sans">
-      {/* Left Column: Geometric Hero matching Image 2 */}
-      <div className="hidden lg:flex lg:w-1/2 relative flex-col justify-between p-12 overflow-hidden bg-gradient-to-br from-[#0c1322] via-[#09152b] to-[#040914]">
-        <div className="absolute inset-0 opacity-40 bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none" />
-        <div className="absolute top-1/4 -left-20 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-10 right-10 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b15_1px,transparent_1px),linear-gradient(to_bottom,#1e293b15_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] pointer-events-none" />
+    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-white font-sans antialiased text-gray-900">
+      
+      {/* Left Half: 50% Full-Bleed Modern Dark Architectural Glass matching VidPro */}
+      <div className="w-full lg:w-1/2 min-h-[460px] lg:min-h-screen relative flex flex-col justify-between p-8 sm:p-12 lg:p-16 text-white overflow-hidden bg-[#0A111E]">
+        {/* Architectural Glass Photographic Background */}
+        <div 
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-60 mix-blend-luminosity scale-105 transition-transform duration-1000"
+          style={{
+            backgroundImage: `url('https://images.unsplash.com/photo-1541888946425-d0fbb18086f6?auto=format&fit=crop&w=1600&q=85')`,
+          }}
+        />
+        
+        {/* Geometric Glass Shading & Moody Lighting Gradients */}
+        <div className="absolute inset-0 bg-gradient-to-tr from-[#050B14] via-[#091527]/90 to-[#0A1E3A]/75 pointer-events-none" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,#1E3A5F_0%,transparent_60%)] opacity-70 pointer-events-none" />
 
-        <div className="relative z-10 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-400 to-indigo-500 flex items-center justify-center font-black text-white shadow-lg shadow-sky-500/20">
-              AB
+        {/* Subtle Architectural Glass Polygon Lines */}
+        <svg className="absolute inset-0 w-full h-full opacity-20 pointer-events-none stroke-sky-300" xmlns="http://www.w3.org/2000/svg">
+          <line x1="0" y1="20%" x2="100%" y2="80%" strokeWidth="1" />
+          <line x1="20%" y1="0" x2="80%" y2="100%" strokeWidth="1" />
+          <line x1="100%" y1="10%" x2="0%" y2="90%" strokeWidth="0.8" />
+          <polygon points="120,40 380,180 260,340 40,240" fill="none" strokeWidth="0.5" />
+        </svg>
+
+        {/* Top Header inside Left Hero */}
+        <div className="relative z-10 flex items-center justify-between w-full">
+          {/* Brand Logo */}
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => onNavigate('landing')}>
+            <div className="w-9 h-9 rounded-xl bg-white text-gray-950 flex items-center justify-center font-black text-sm shadow-md">
+              <svg className="w-5 h-5 text-gray-950" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+              </svg>
             </div>
             <span className="text-xl font-bold tracking-tight text-white">AssetBridge</span>
           </div>
 
+          {/* Back to Website Link */}
           <button
             onClick={() => onNavigate('landing')}
             className="flex items-center gap-2 text-sm text-gray-300 hover:text-white transition font-medium"
@@ -87,49 +99,50 @@ export default function SignUpPage({ onNavigate, onSignUpSuccess }) {
           </button>
         </div>
 
-        <div className="relative z-10 max-w-lg mb-8">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 backdrop-blur-md rounded-full text-xs font-medium text-sky-300 mb-4 border border-white/10">
-            <ShieldCheck size={14} className="text-sky-400" />
-            <span>Bank-Grade Non-Custodial Architecture</span>
-          </div>
-          <h2 className="text-4xl xl:text-5xl font-extrabold tracking-tight text-white leading-tight mb-4">
-            Own More. Trade Smarter. Invest Without Boundaries.
-          </h2>
-          <p className="text-base text-gray-300 leading-relaxed mb-6 font-normal">
-            Join thousands of traders and families across Africa. Send remittances with near-zero fees, pool savings in Stokvel pots, and buy fractions of US tech stocks.
+        {/* Bottom Hero Pitch with true AssetBridge tagline from PDF */}
+        <div className="relative z-10 max-w-lg pb-4">
+          <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-white leading-[1.15] mb-4">
+            Own More. Trade Smarter.<br />
+            Invest Without Boundaries.
+          </h1>
+          <p className="text-sm sm:text-base text-gray-300 leading-relaxed font-normal mb-8 max-w-md">
+            Trade global markets. Send money anywhere. One mobile wallet for peer-to-peer stablecoin payments, community savings pots, and live tokenised equities.
           </p>
 
+          {/* Carousel Dot Indicators */}
           <div className="flex items-center gap-2">
             <span className="w-2 h-1.5 bg-white/40 rounded-full" />
-            <span className="w-6 h-1.5 bg-white rounded-full transition-all" />
+            <span className="w-7 h-1.5 bg-white rounded-full transition-all" />
             <span className="w-2 h-1.5 bg-white/40 rounded-full" />
           </div>
         </div>
       </div>
 
-      {/* Right Column: Clean White Card */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12 bg-[#F3F4F6]">
-        <div className="w-full max-w-md bg-white rounded-[2rem] p-8 sm:p-10 shadow-xl border border-gray-100 text-gray-900 animate-fade-in">
+      {/* Right Half: Fills the entire right side of the page (no awkward gray margin) */}
+      <div className="w-full lg:w-1/2 bg-white flex flex-col justify-center items-center px-6 sm:px-12 md:px-16 lg:px-20 xl:px-24 py-12 min-h-screen">
+        <div className="w-full max-w-[440px]">
           
-          <div className="mb-6">
-            <h2 className="text-3xl font-extrabold tracking-tight text-gray-900">
+          {/* Form Header */}
+          <div className="mb-7 text-left">
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-gray-950 mb-2">
               Create an Account
             </h2>
-            <p className="text-sm text-gray-500 mt-2">
-              Sign up securely with Supabase to get started in seconds.
+            <p className="text-sm text-gray-500 font-normal">
+              Sign up to start sending and investing with ease.
             </p>
           </div>
 
+          {/* Error Message */}
           {errorMsg && (
-            <div className="mb-5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2">
-              <AlertCircle size={15} className="shrink-0" />
-              <span>{errorMsg}</span>
+            <div className="mb-5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium">
+              {errorMsg}
             </div>
           )}
 
-          <form onSubmit={handleSignUp} className="space-y-3.5">
+          {/* Sign Up Form */}
+          <form onSubmit={handleSignUp} className="space-y-4 text-left">
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
                 Full Name
               </label>
               <input
@@ -138,12 +151,12 @@ export default function SignUpPage({ onNavigate, onSignUpSuccess }) {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Input your full name"
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent text-sm transition"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-950 focus:border-transparent text-sm transition"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
                 Email
               </label>
               <input
@@ -152,52 +165,35 @@ export default function SignUpPage({ onNavigate, onSignUpSuccess }) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Input your email"
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent text-sm transition"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-950 focus:border-transparent text-sm transition"
               />
             </div>
 
             <div>
-              <div className="flex justify-between items-center mb-1">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600">
-                  Password
-                </label>
-                {password && (
-                  <span className="text-[11px] font-bold text-gray-500">
-                    Strength: <span className="text-gray-900">{strength.label}</span>
-                  </span>
-                )}
-              </div>
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
+                Password
+              </label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Password (min 8 chars, 1 number, 1 symbol)"
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent text-sm transition pr-11"
+                  placeholder="Input your password"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-950 focus:border-transparent text-sm transition pr-12"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
-
-              {/* Password Strength Meter */}
-              {password && (
-                <div className="mt-1.5 flex gap-1 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
-                  <div className={`h-full transition-all duration-300 ${strength.score >= 1 ? strength.color : 'bg-transparent'}`} style={{ width: '25%' }} />
-                  <div className={`h-full transition-all duration-300 ${strength.score >= 2 ? strength.color : 'bg-transparent'}`} style={{ width: '25%' }} />
-                  <div className={`h-full transition-all duration-300 ${strength.score >= 3 ? strength.color : 'bg-transparent'}`} style={{ width: '25%' }} />
-                  <div className={`h-full transition-all duration-300 ${strength.score >= 4 ? strength.color : 'bg-transparent'}`} style={{ width: '25%' }} />
-                </div>
-              )}
             </div>
 
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5">
                 Confirm Password
               </label>
               <input
@@ -206,58 +202,55 @@ export default function SignUpPage({ onNavigate, onSignUpSuccess }) {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Confirm your password"
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent text-sm transition"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-950 focus:border-transparent text-sm transition"
               />
             </div>
 
-            <div className="pt-1">
-              <label className="flex items-start gap-2.5 cursor-pointer text-xs text-gray-600 select-none">
+            {/* Remember Me */}
+            <div className="flex items-center text-xs sm:text-sm pt-1">
+              <label className="flex items-center gap-2.5 cursor-pointer text-gray-600 select-none">
                 <input
                   type="checkbox"
-                  checked={agreeTerms}
-                  onChange={(e) => setAgreeTerms(e.target.checked)}
-                  className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900 mt-0.5"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-gray-950 focus:ring-gray-950 accent-gray-950"
                 />
-                <span className="leading-tight">
-                  I agree to the <span className="text-gray-900 font-semibold underline">Terms of Service</span> and acknowledge testnet token parameters.
-                </span>
+                <span>Remember Me</span>
               </label>
             </div>
 
+            {/* Primary Submit Button */}
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3.5 px-4 bg-[#141518] hover:bg-black text-white font-semibold rounded-xl shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 text-sm mt-3 disabled:opacity-70"
+              className="w-full py-3.5 px-4 bg-[#18181B] hover:bg-black text-white font-semibold rounded-xl transition duration-150 active:scale-[0.99] flex items-center justify-center gap-2 text-sm shadow-sm disabled:opacity-70 mt-3"
             >
               {isLoading ? (
                 <>
                   <Loader2 size={18} className="animate-spin" />
-                  <span>Encrypting & Registering with Supabase...</span>
+                  <span>Creating Account...</span>
                 </>
               ) : (
-                <span>Create Secure Account</span>
+                <span>Create Account</span>
               )}
             </button>
           </form>
 
-          <div className="relative my-5 text-center">
+          {/* Divider */}
+          <div className="relative my-6 text-center">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-gray-200" />
             </div>
-            <span className="relative bg-white px-3 text-xs text-gray-400 font-medium">
+            <span className="relative bg-white px-4 text-xs text-gray-400 font-normal">
               Or continue with:
             </span>
           </div>
 
+          {/* Google Button */}
           <button
             type="button"
-            onClick={() => {
-              setEmail('zoia@assetbridge.africa');
-              setFullName('Zoia M.');
-              setPassword('SecurePass2026!');
-              setConfirmPassword('SecurePass2026!');
-            }}
-            className="w-full py-2.5 px-4 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium text-sm flex items-center justify-center gap-3 transition shadow-sm"
+            onClick={handleGoogleSignUp}
+            className="w-full py-3 px-4 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium text-sm flex items-center justify-center gap-3 transition shadow-sm"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -268,17 +261,19 @@ export default function SignUpPage({ onNavigate, onSignUpSuccess }) {
             <span>Continue with Google</span>
           </button>
 
-          <div className="mt-5 text-center text-xs text-gray-500">
+          {/* Switch to Login */}
+          <div className="mt-8 text-center text-xs sm:text-sm text-gray-500">
             Already have an account?{' '}
             <button
               onClick={() => onNavigate('login')}
-              className="text-gray-900 font-bold hover:underline"
+              className="text-gray-950 font-bold hover:underline"
             >
               Log in here
             </button>
           </div>
         </div>
       </div>
+
     </div>
   );
 }
