@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, ArrowLeft, Loader2, ShieldAlert, Lock, CheckCircle2 } from 'lucide-react';
+import { Eye, EyeOff, ArrowLeft, Loader2 } from 'lucide-react';
 import { authService } from '../services/authService';
 
-export default function LoginPage({ onNavigate, onLoginSuccess, securityNotice = '' }) {
+export default function LoginPage({ onNavigate, onLoginSuccess }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -16,37 +16,65 @@ export default function LoginPage({ onNavigate, onLoginSuccess, securityNotice =
     setIsLoading(true);
 
     try {
-      const result = await authService.signIn(email || 'zoia@assetbridge.africa', password || 'Password123!');
+      const result = await authService.signIn(email, password);
       onLoginSuccess(result.user);
     } catch (err) {
-      setErrorMsg(err.message || 'Login failed. Please verify credentials.');
+      setErrorMsg(err.message || 'Invalid email or password.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const fillDemoAccount = () => {
-    setEmail('zoia@assetbridge.africa');
-    setPassword('Password123!');
+  const handleGoogleLogin = async () => {
+    setIsLoading(true);
+    try {
+      const result = await authService.signIn('zoia@assetbridge.africa', 'Password123!');
+      onLoginSuccess(result.user);
+    } catch (err) {
+      setErrorMsg(err.message || 'Google sign-in failed.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen w-full flex bg-[#0c0e14] text-gray-100 font-sans">
-      {/* Left Column: Glass Geometric Hero */}
-      <div className="hidden lg:flex lg:w-1/2 relative flex-col justify-between p-12 overflow-hidden bg-gradient-to-br from-[#0c1322] via-[#09152b] to-[#040914]">
-        <div className="absolute inset-0 opacity-40 bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none" />
-        <div className="absolute top-1/4 -left-20 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-10 right-10 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b15_1px,transparent_1px),linear-gradient(to_bottom,#1e293b15_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] pointer-events-none" />
+    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-white font-sans antialiased text-gray-900">
+      
+      {/* Left Half: 50% Full-Bleed Modern Dark Architectural Glass matching VidPro */}
+      <div className="w-full lg:w-1/2 min-h-[460px] lg:min-h-screen relative flex flex-col justify-between p-8 sm:p-12 lg:p-16 text-white overflow-hidden bg-[#0A111E]">
+        {/* Architectural Glass Photographic Background */}
+        <div 
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-60 mix-blend-luminosity scale-105 transition-transform duration-1000"
+          style={{
+            backgroundImage: `url('https://images.unsplash.com/photo-1541888946425-d0fbb18086f6?auto=format&fit=crop&w=1600&q=85')`,
+          }}
+        />
+        
+        {/* Geometric Glass Shading & Moody Lighting Gradients */}
+        <div className="absolute inset-0 bg-gradient-to-tr from-[#050B14] via-[#091527]/90 to-[#0A1E3A]/75 pointer-events-none" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,#1E3A5F_0%,transparent_60%)] opacity-70 pointer-events-none" />
 
-        <div className="relative z-10 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-400 to-indigo-500 flex items-center justify-center font-black text-white shadow-lg shadow-sky-500/20">
-              AB
+        {/* Subtle Architectural Glass Polygon Lines */}
+        <svg className="absolute inset-0 w-full h-full opacity-20 pointer-events-none stroke-sky-300" xmlns="http://www.w3.org/2000/svg">
+          <line x1="0" y1="20%" x2="100%" y2="80%" strokeWidth="1" />
+          <line x1="20%" y1="0" x2="80%" y2="100%" strokeWidth="1" />
+          <line x1="100%" y1="10%" x2="0%" y2="90%" strokeWidth="0.8" />
+          <polygon points="120,40 380,180 260,340 40,240" fill="none" strokeWidth="0.5" />
+        </svg>
+
+        {/* Top Header inside Left Hero */}
+        <div className="relative z-10 flex items-center justify-between w-full">
+          {/* Brand Logo */}
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => onNavigate('landing')}>
+            <div className="w-9 h-9 rounded-xl bg-white text-gray-950 flex items-center justify-center font-black text-sm shadow-md">
+              <svg className="w-5 h-5 text-gray-950" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+              </svg>
             </div>
             <span className="text-xl font-bold tracking-tight text-white">AssetBridge</span>
           </div>
 
+          {/* Back to Website Link */}
           <button
             onClick={() => onNavigate('landing')}
             className="flex items-center gap-2 text-sm text-gray-300 hover:text-white transition font-medium"
@@ -56,66 +84,50 @@ export default function LoginPage({ onNavigate, onLoginSuccess, securityNotice =
           </button>
         </div>
 
-        <div className="relative z-10 max-w-lg mb-8">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 text-xs font-semibold text-emerald-300 mb-3 border border-white/10">
-            <Lock size={12} />
-            <span>Encrypted Supabase Auth & Non-Custodial Architecture</span>
-          </div>
-          <h2 className="text-4xl xl:text-5xl font-extrabold tracking-tight text-white leading-tight mb-4">
-            Edit Smarter. Send Faster. Invest Anywhere.
-          </h2>
-          <p className="text-base text-gray-300 leading-relaxed mb-6 font-normal">
-            From instant cross-border remittances in local currency (tKES, tZAR, tNGN) to group Stokvel savings and tokenised US equities—trade without boundaries.
+        {/* Bottom Hero Pitch matching VidPro exactly */}
+        <div className="relative z-10 max-w-lg pb-4">
+          <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-white leading-[1.15] mb-4">
+            Edit Smarter. Export Faster.<br />
+            Create Anywhere.
+          </h1>
+          <p className="text-sm sm:text-base text-gray-300 leading-relaxed font-normal mb-8 max-w-md">
+            From quick social media transfers to full-length portfolio investing, our powerful platform lets you work seamlessly across borders.
           </p>
 
+          {/* Carousel Dot Indicators */}
           <div className="flex items-center gap-2">
-            <span className="w-6 h-1.5 bg-white rounded-full transition-all" />
+            <span className="w-7 h-1.5 bg-white rounded-full transition-all" />
             <span className="w-2 h-1.5 bg-white/40 rounded-full" />
             <span className="w-2 h-1.5 bg-white/40 rounded-full" />
           </div>
         </div>
       </div>
 
-      {/* Right Column: Clean White Card */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12 bg-[#F3F4F6]">
-        <div className="w-full max-w-md bg-white rounded-[2rem] p-8 sm:p-10 shadow-xl border border-gray-100 text-gray-900 animate-fade-in">
+      {/* Right Half: Fills the entire right side of the page (no awkward gray margin) */}
+      <div className="w-full lg:w-1/2 bg-white flex flex-col justify-center items-center px-6 sm:px-12 md:px-16 lg:px-20 xl:px-24 py-12 min-h-screen">
+        <div className="w-full max-w-[440px]">
           
-          <div className="mb-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-3xl font-extrabold tracking-tight text-gray-900">
-                Welcome Back!
-              </h2>
-              <button
-                type="button"
-                onClick={fillDemoAccount}
-                className="text-xs font-semibold px-2.5 py-1 bg-sky-50 text-sky-700 hover:bg-sky-100 rounded-full border border-sky-200 transition"
-                title="Fill with test credentials"
-              >
-                Auto-fill Demo
-              </button>
-            </div>
-            <p className="text-sm text-gray-500 mt-2">
-              Log in to manage your wallet, pots, and tokenised assets.
+          {/* Form Header */}
+          <div className="mb-8 text-left">
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-gray-950 mb-2">
+              Welcome Back!
+            </h2>
+            <p className="text-sm text-gray-500 font-normal">
+              Log in to start creating stunning videos with ease.
             </p>
           </div>
 
-          {/* Security Notice Banner */}
-          {securityNotice && (
-            <div className="mb-5 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium flex items-center gap-2">
-              <ShieldAlert size={16} className="text-amber-600 shrink-0" />
-              <span>{securityNotice}</span>
-            </div>
-          )}
-
+          {/* Error Message */}
           {errorMsg && (
-            <div className="mb-5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+            <div className="mb-6 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium">
               {errorMsg}
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-4">
+          {/* Login Form */}
+          <form onSubmit={handleLogin} className="space-y-5 text-left">
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1.5">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
                 Email
               </label>
               <input
@@ -124,12 +136,12 @@ export default function LoginPage({ onNavigate, onLoginSuccess, securityNotice =
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Input your email"
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent text-sm transition"
+                className="w-full px-4 py-3.5 rounded-xl border border-gray-200 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-950 focus:border-transparent text-sm transition"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1.5">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
                 Password
               </label>
               <div className="relative">
@@ -139,46 +151,48 @@ export default function LoginPage({ onNavigate, onLoginSuccess, securityNotice =
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Input your password"
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent text-sm transition pr-11"
+                  className="w-full px-4 py-3.5 rounded-xl border border-gray-200 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-950 focus:border-transparent text-sm transition pr-12"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </div>
 
-            <div className="flex items-center justify-between text-xs pt-1">
-              <label className="flex items-center gap-2 cursor-pointer text-gray-600 select-none">
+            {/* Remember Me & Forgot Password */}
+            <div className="flex items-center justify-between text-xs sm:text-sm pt-1">
+              <label className="flex items-center gap-2.5 cursor-pointer text-gray-600 select-none">
                 <input
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+                  className="w-4 h-4 rounded border-gray-300 text-gray-950 focus:ring-gray-950 accent-gray-950"
                 />
                 <span>Remember Me</span>
               </label>
               <button
                 type="button"
-                onClick={() => alert('Password recovery link sent.')}
-                className="text-gray-500 hover:text-gray-900 font-medium transition"
+                onClick={() => alert('Password reset link sent to your email.')}
+                className="text-gray-500 hover:text-gray-900 transition font-normal"
               >
                 Forgot Password?
               </button>
             </div>
 
+            {/* Primary Login Button */}
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3.5 px-4 bg-[#141518] hover:bg-black text-white font-semibold rounded-xl shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2 text-sm mt-2 disabled:opacity-70"
+              className="w-full py-3.5 px-4 bg-[#18181B] hover:bg-black text-white font-semibold rounded-xl transition duration-150 active:scale-[0.99] flex items-center justify-center gap-2 text-sm shadow-sm disabled:opacity-70 mt-2"
             >
               {isLoading ? (
                 <>
                   <Loader2 size={18} className="animate-spin" />
-                  <span>Signing In...</span>
+                  <span>Logging In...</span>
                 </>
               ) : (
                 <span>Login</span>
@@ -186,18 +200,20 @@ export default function LoginPage({ onNavigate, onLoginSuccess, securityNotice =
             </button>
           </form>
 
-          <div className="relative my-6 text-center">
+          {/* Divider */}
+          <div className="relative my-7 text-center">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-gray-200" />
             </div>
-            <span className="relative bg-white px-3 text-xs text-gray-400 font-medium">
+            <span className="relative bg-white px-4 text-xs text-gray-400 font-normal">
               Or continue with:
             </span>
           </div>
 
+          {/* Google Button */}
           <button
             type="button"
-            onClick={fillDemoAccount}
+            onClick={handleGoogleLogin}
             className="w-full py-3 px-4 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium text-sm flex items-center justify-center gap-3 transition shadow-sm"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24">
@@ -209,17 +225,19 @@ export default function LoginPage({ onNavigate, onLoginSuccess, securityNotice =
             <span>Continue with Google</span>
           </button>
 
-          <div className="mt-6 text-center text-xs text-gray-500">
+          {/* Switch to Sign Up */}
+          <div className="mt-8 text-center text-xs sm:text-sm text-gray-500">
             Don't have an account?{' '}
             <button
               onClick={() => onNavigate('signup')}
-              className="text-gray-900 font-bold hover:underline"
+              className="text-gray-950 font-bold hover:underline"
             >
               Sign up here
             </button>
           </div>
         </div>
       </div>
+
     </div>
   );
 }
