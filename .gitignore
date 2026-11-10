@@ -24,7 +24,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Editor & OS files
+# Local user wallet store
+server/data/
+**/data/*.json
 .vscode/*
 !.vscode/extensions.json
 .idea/

@@ -1,6 +1,15 @@
 import { remittanceService } from '../services/remittanceService.js';
 import { successResponse, errorResponse } from '../utils/responseHelper.js';
 
+export const getDestinations = (req, res) => {
+  try {
+    const destinations = remittanceService.getAllDestinations();
+    return successResponse(res, destinations, 'Destinations retrieved successfully');
+  } catch (err) {
+    return errorResponse(res, err.message, 500);
+  }
+};
+
 export const getQuote = (req, res) => {
   try {
     const { amount = 100, targetCurrency = 'tKES' } = req.query;
@@ -28,4 +37,3 @@ export const sendRemittance = (req, res) => {
     return errorResponse(res, err.message, 500);
   }
 };
-
