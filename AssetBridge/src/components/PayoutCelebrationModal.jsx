@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import confetti from 'canvas-confetti';
-import { CheckCircle2, ExternalLink, Sparkles, X } from 'lucide-react';
+import { Sparkles, X } from 'lucide-react';
 
 export default function PayoutCelebrationModal({ isOpen, onClose, payoutData }) {
   useEffect(() => {
@@ -55,17 +55,15 @@ export default function PayoutCelebrationModal({ isOpen, onClose, payoutData }) 
         </div>
 
         <span className="inline-block px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-semibold rounded-full uppercase tracking-wider mb-2">
-          Round {payoutData.round} Unlocked & Settled
+          Demo round complete · no funds moved
         </span>
 
         <h3 className="text-2xl font-bold text-gray-900 mb-2">
-          {isRotation ? `${payoutData.recipient} Received +$${payoutData.amount} USDT!` : `Co-Purchased $${payoutData.amount} of ${payoutData.asset}!`}
+          {isRotation ? `${payoutData.recipient} is the round beneficiary` : `Demo allocation for ${payoutData.asset}`}
         </h3>
 
         <p className="text-sm text-gray-600 mb-6">
-          {isRotation
-            ? `All 5 members have contributed their $20 USDT. The smart contract automatically executed the rotation payout without intermediaries!`
-            : `Group threshold reached! Contract atomically executed market buy for ${payoutData.asset} and credited vault shares to all 5 members.`}
+          This preview updated the local demo record. No wallet was charged, no smart contract ran, and no payout or investment occurred.
         </p>
 
         <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 text-left mb-6 space-y-2 text-xs text-gray-600">
@@ -74,16 +72,15 @@ export default function PayoutCelebrationModal({ isOpen, onClose, payoutData }) 
             <span className="font-semibold text-gray-900">{payoutData.recipient}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-500">Amount Paid:</span>
+            <span className="text-gray-500">Demo amount:</span>
             <span className="font-bold text-emerald-600 text-sm">
               {isRotation ? `+$${payoutData.amount} USDT` : `$${payoutData.amount} -> ${payoutData.asset}`}
             </span>
           </div>
           <div className="flex justify-between items-center pt-1 border-t border-gray-200">
-            <span className="text-gray-500">Contract Tx Hash:</span>
+            <span className="text-gray-500">Demo reference:</span>
             <span className="font-mono text-indigo-600 flex items-center gap-1">
-              {payoutData.txHash || '0x49e...a911'}
-              <ExternalLink size={12} />
+              {payoutData.txHash || 'Demo only'}
             </span>
           </div>
         </div>

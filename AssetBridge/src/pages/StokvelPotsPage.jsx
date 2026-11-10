@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Users, CheckCircle2, Circle, Plus, Sparkles, RefreshCw, ArrowRight, ExternalLink, ShieldCheck, DollarSign, HelpCircle, Layers } from 'lucide-react';
+import { Users, CheckCircle2, Circle, Plus, Sparkles, RefreshCw, ArrowRight, ExternalLink, ShieldCheck, DollarSign, HelpCircle, Layers, Info } from 'lucide-react';
 import ProgressRing from '../components/ProgressRing';
 import PayoutCelebrationModal from '../components/PayoutCelebrationModal';
 import { potsService } from '../services/potsService';
 
-export default function StokvelPotsPage() {
-  const [pots, setPots] = useState(potsService.getPots());
+export default function StokvelPotsPage({ user }) {
+  const storageUserId = user?.email || user?.id || 'demo';
+  const [pots, setPots] = useState(() => potsService.getPots(storageUserId));
   const [activePotId, setActivePotId] = useState('friends-stokvel');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [payoutCelebration, setPayoutCelebration] = useState(null);
@@ -23,7 +24,7 @@ export default function StokvelPotsPage() {
 
   // Handle member contribution (Simulate 5th member paying for the 40s demo)
   const handleContribute = () => {
-    const result = potsService.contributeToPot(activePot.id, '5');
+    const result = potsService.contributeToPot(activePot.id, '5', storageUserId);
     if (result) {
       setPots([...result.pots]);
       if (result.payoutEvent) {
@@ -34,7 +35,7 @@ export default function StokvelPotsPage() {
 
   // Next Round button for the demo
   const handleNextRound = () => {
-    const result = potsService.advanceNextRound(activePot.id);
+    const result = potsService.advanceNextRound(activePot.id, storageUserId);
     if (result) {
       setPots([...result.pots]);
     }
@@ -42,15 +43,15 @@ export default function StokvelPotsPage() {
 
   // Reset demo
   const handleResetDemo = () => {
-    const resetList = potsService.resetDemo();
+    const resetList = potsService.resetDemo(storageUserId);
     setPots([...resetList]);
   };
 
   // Create new pot
   const handleCreateSubmit = (e) => {
     e.preventDefault();
-    const created = potsService.createPot(newPotForm);
-    setPots(potsService.getPots());
+    const created = potsService.createPot(newPotForm, storageUserId);
+    setPots(potsService.getPots(storageUserId));
     setActivePotId(created.id);
     setShowCreateModal(false);
   };
@@ -75,14 +76,14 @@ export default function StokvelPotsPage() {
             Automated Group Savings & Co-Investing
           </h2>
           <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">
-            The smart contract holds the USDT, enforces contribution rules, and pays out or invests automatically. A round only unlocks once <span className="text-white font-bold underline decoration-emerald-400">every single member</span> has contributed—eliminating counterparty default.
+            Track group contributions and agreed payout order. This preview stores demo activity in this browser; no USDT is collected and no smart contract payout or investment is executed.
           </p>
         </div>
 
         {/* Demo Controller Toolbar */}
         <div className="mt-5 pt-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-gray-300">Demo Controls:</span>
+                <span className="font-bold text-gray-300">Preview controls:</span>
             <button
               onClick={handleNextRound}
               className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold flex items-center gap-1.5 transition shadow"
@@ -171,11 +172,11 @@ export default function StokvelPotsPage() {
                 <div className="text-2xl font-black text-gray-900">
                   ${activePot.contributionAmount * paidCount} / ${activePot.totalPot} USDT
                 </div>
-                <div className="text-xs text-emerald-600 font-semibold flex items-center gap-1 justify-center sm:justify-start">
+              <div className="text-xs text-emerald-600 font-semibold flex items-center gap-1 justify-center sm:justify-start">
                   <CheckCircle2 size={13} />
                   <span>
                     {progressPercent === 100
-                      ? 'Round fully paid! Payout executed.'
+                      ? 'Demo round complete. No funds moved.'
                       : 'Waiting for final contribution'}
                   </span>
                 </div>
@@ -205,7 +206,7 @@ export default function StokvelPotsPage() {
 
               <div className="flex justify-between text-gray-600 pt-1 border-t border-gray-100">
                 <span>Contract Rule:</span>
-                <span className="text-gray-900 font-medium">Automatic payout on 5/5 contributions</span>
+                <span className="text-gray-900 font-medium">Payout requires a real contract integration</span>
               </div>
             </div>
           </div>
@@ -222,7 +223,7 @@ export default function StokvelPotsPage() {
                 onClick={handleContribute}
                 className="w-full py-3.5 px-4 bg-[#141518] hover:bg-black text-white text-sm font-bold rounded-xl shadow-lg transition active:scale-[0.99] flex items-center justify-center gap-2"
               >
-                <span>Contribute ${activePot.contributionAmount} USDT (Trigger Round Completion)</span>
+                <span>Record demo contribution · ${activePot.contributionAmount} USDT</span>
                 <ArrowRight size={16} />
               </button>
             )}
@@ -300,10 +301,14 @@ export default function StokvelPotsPage() {
           {/* Pot Payout History */}
           <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
             <h4 className="text-base font-bold text-gray-900 mb-3">
-              On-Chain Payout History
+              Demo Round History
             </h4>
+            <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              <Info size={15} className="mt-0.5 shrink-0" />
+              <span>History is saved in this browser only. Demo references are not blockchain transaction hashes.</span>
+            </div>
             {activePot.payoutHistory.length === 0 ? (
-              <p className="text-xs text-gray-400">No rounds completed yet.</p>
+              <p className="text-xs text-gray-400">No demo rounds completed yet.</p>
             ) : (
               <div className="space-y-2">
                 {activePot.payoutHistory.map((item, idx) => (

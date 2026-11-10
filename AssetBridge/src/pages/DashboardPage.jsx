@@ -1,11 +1,41 @@
+import { useEffect, useState } from 'react';
 import {
   Wallet, Send, Users, TrendingUp, ShieldCheck, Search, Bell,
   ArrowUpRight, ArrowRightLeft, MoreHorizontal, ArrowRight, Download,
   ChevronRight, LogOut, CircleDollarSign, BriefcaseBusiness, Globe2,
   Info, Activity, Layers3, ArrowUp,
 } from 'lucide-react';
+import { activityService, activityChangeEvent } from '../services/activityService';
 
 export default function DashboardPage({ currentView, onNavigate, onLogout, user, children }) {
+  const storageUserId = user?.email || user?.id || 'demo';
+  const [activities, setActivities] = useState(() => activityService.getActivities(storageUserId));
+  const [reminders, setReminders] = useState(() => activityService.getReminders(storageUserId));
+  const [reminderTitle, setReminderTitle] = useState('Stokvel contribution due');
+  const [reminderDate, setReminderDate] = useState(() => {
+    const date = new Date();
+    date.setDate(date.getDate() + 7);
+    return date.toISOString().slice(0, 10);
+  });
+
+  useEffect(() => {
+    const refresh = () => {
+      setActivities(activityService.getActivities(storageUserId));
+      setReminders(activityService.getReminders(storageUserId));
+    };
+    window.addEventListener(activityChangeEvent, refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener(activityChangeEvent, refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, [storageUserId]);
+
+  const addReminder = (event) => {
+    event.preventDefault();
+    if (!reminderTitle.trim() || !reminderDate) return;
+    activityService.addReminder({ title: reminderTitle.trim(), dueAt: new Date(`${reminderDate}T09:00:00`).toISOString() }, storageUserId);
+  };
   const navItems = [
     { id: 'wallet', label: 'Wallet', icon: Wallet },
     { id: 'remittance', label: 'Send Home', icon: Send },
@@ -194,9 +224,9 @@ export default function DashboardPage({ currentView, onNavigate, onLogout, user,
                 <div>
                   <div className="mb-3 flex flex-wrap items-center gap-2">
                     <h2 className="text-slate-300 text-[13px] font-semibold tracking-widest uppercase">Total Balance</h2>
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-emerald-200">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300/20 bg-amber-300/10 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-amber-100">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
-                      DEMO WALLET
+                      SIMULATED DATA
                     </span>
                   </div>
                   <div className="flex flex-wrap items-end gap-3 sm:gap-4">
@@ -280,6 +310,43 @@ export default function DashboardPage({ currentView, onNavigate, onLogout, user,
             </div>
           </section>
 
+          <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+            <div className="rounded-[2rem] border border-slate-100 bg-white p-6 shadow-sm sm:p-8">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold">Recent activity</h3>
+                  <p className="mt-1 text-xs text-slate-500">Saved on this device in this demo.</p>
+                </div>
+                <Activity size={19} className="text-blue-600" />
+              </div>
+              {activities.length ? <div className="space-y-3">
+                {activities.slice(0, 5).map((item) => <div key={item.id} className="flex items-start justify-between gap-3 rounded-xl bg-slate-50 p-3">
+                  <div><p className="text-sm font-semibold text-slate-800">{item.title}</p><p className="mt-0.5 text-xs text-slate-500">{item.detail}</p><p className="mt-1 text-[10px] text-slate-400">{new Date(item.createdAt).toLocaleString()}</p></div>
+                  <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold uppercase text-amber-800">{item.status}</span>
+                </div>)}
+              </div> : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Your demo transactions will appear here.</p>}
+            </div>
+
+            <div className="rounded-[2rem] border border-slate-100 bg-white p-6 shadow-sm sm:p-8">
+              <div className="mb-4 flex items-center justify-between">
+                <div><h3 className="text-lg font-bold">Reminders</h3><p className="mt-1 text-xs text-slate-500">In-app reminders saved on this device.</p></div>
+                <Bell size={19} className="text-blue-600" />
+              </div>
+              <form onSubmit={addReminder} className="mb-4 flex flex-col gap-2 sm:flex-row">
+                <input aria-label="Reminder name" value={reminderTitle} onChange={(event) => setReminderTitle(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                <input aria-label="Reminder date" type="date" min={new Date().toISOString().slice(0, 10)} value={reminderDate} onChange={(event) => setReminderDate(event.target.value)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm" />
+                <button className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Add</button>
+              </form>
+              {reminders.filter((item) => !item.completed).length ? <div className="space-y-2">
+                {reminders.filter((item) => !item.completed).slice(0, 4).map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3">
+                  <div><p className="text-sm font-semibold">{item.title}</p><p className="text-xs text-slate-500">Due {new Date(item.dueAt).toLocaleDateString()}</p></div>
+                  <button onClick={() => activityService.completeReminder(item.id, storageUserId)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">Done</button>
+                </div>)}
+              </div> : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">No upcoming reminders.</p>}
+              <p className="mt-3 text-[11px] text-slate-400">These are dashboard reminders only. Timed, background, and email alerts are not connected yet.</p>
+            </div>
+          </section>
+
           {/* ROW 2: YOUR ASSETS (Glass Cards) */}
           <section>
             <div className="flex items-center justify-between mb-6 px-2">
@@ -338,11 +405,11 @@ export default function DashboardPage({ currentView, onNavigate, onLogout, user,
               <div className="mb-6 flex items-center justify-between gap-3">
                 <div>
                   <h3 className="text-xl font-bold tracking-tight text-slate-900">Market Overview</h3>
-                  <p className="mt-1 text-xs text-slate-500">Explore assets available to trade</p>
+                  <p className="mt-1 text-xs text-slate-500">Illustrative sample prices · trading is not connected</p>
                 </div>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-[11px] font-bold text-emerald-700">
                   <Activity size={13} />
-                  Markets open
+                  Sample data
                 </span>
                 <button aria-label="More market options" className="hidden p-2 hover:bg-slate-50 rounded-full transition-colors text-slate-400 sm:inline-flex">
                   <MoreHorizontal size={20} />
@@ -423,7 +490,7 @@ export default function DashboardPage({ currentView, onNavigate, onLogout, user,
                 </h3>
 
                 <p className="text-[15px] text-slate-400 leading-relaxed mb-8 font-medium">
-                  Create a Stokvel Pot. Pool USDT with friends safely via smart contracts. No banks, no single point of failure.
+                  Create a demo Stokvel pot and track sample contributions. Wallet funding and smart-contract payouts are not connected.
                 </p>
               </div>
 

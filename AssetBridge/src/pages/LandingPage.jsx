@@ -21,7 +21,7 @@ export default function LandingPage({ onNavigate }) {
             <span className="font-extrabold text-lg tracking-tight">AssetBridge</span>
           </div>
           <span className="hidden md:inline-block text-xs text-gray-400 font-mono">
-            / build.africa@assetbridge.xyz
+            Prototype · simulated transactions
           </span>
         </div>
 
@@ -54,18 +54,18 @@ export default function LandingPage({ onNavigate }) {
         {/* Track Badge */}
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gray-100 border border-gray-200 text-xs font-semibold text-gray-800 mb-8">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-          <span>Mobile Money & P2P + Real-World Assets Hackathon Solution</span>
+          <span>AssetBridge product preview · test flows only</span>
         </div>
 
         {/* Big Bold Headline */}
         <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-gray-900 leading-[1.08] mb-6">
-          Trade global markets. <br className="hidden sm:inline" />
-          Send money anywhere.
+          Plan transfers. <br className="hidden sm:inline" />
+          Save together.
         </h1>
 
         {/* Subhead */}
         <p className="max-w-2xl mx-auto text-lg sm:text-xl text-gray-500 leading-relaxed mb-10">
-          One mobile wallet where African users send stablecoins peer-to-peer, run community Stokvel savings pots, and trade tokenised equities live 24/7 with USDT.
+          A prototype for cross-border payments, community savings, and tokenised asset access. Current prices, balances, transfers, and orders are simulated; no funds move.
         </p>
 
         {/* Center Inline Email Input matching Image 3 */}
@@ -86,7 +86,7 @@ export default function LandingPage({ onNavigate }) {
         </form>
 
         <p className="text-xs text-gray-400 mb-16">
-          *No minimum balance or international bank account required. Runs on testnet USDT.
+          *Demo mode: no live payment provider, broker, custodian, or blockchain settlement is connected.
         </p>
 
         {/* Hero Visual Mockup with Floating Badges matching Image 3 */}
@@ -112,7 +112,7 @@ export default function LandingPage({ onNavigate }) {
               <span>Stokvel Pots</span>
             </div>
             <p className="text-xs font-semibold leading-snug">
-              Friends pool $20/mo: Thandi receives $100 lump sum. Safe smart contract rules.
+              Track sample group contributions. Smart contract rules are not deployed.
             </p>
           </div>
 
@@ -160,7 +160,7 @@ export default function LandingPage({ onNavigate }) {
                 onClick={() => onNavigate('dashboard')}
                 className="w-full py-2.5 rounded-xl bg-white text-gray-900 font-bold text-xs flex items-center justify-center gap-2 hover:bg-gray-100 transition"
               >
-                <span>Open Dashboard</span>
+                <span>Open Demo Dashboard</span>
                 <ArrowRight size={14} />
               </button>
             </div>
@@ -175,7 +175,7 @@ export default function LandingPage({ onNavigate }) {
             </div>
             <h3 className="text-base font-bold text-gray-900 mb-1">Local Remittance</h3>
             <p className="text-xs text-gray-500 leading-relaxed">
-              Send $100 and recipient gets tKES or tZAR instantly. Clear comparison showing savings over traditional SWIFT bank transfers.
+              Preview the local-currency estimate and compare illustrative fees. Payout provider connections are not active.
             </p>
           </div>
 
@@ -185,7 +185,7 @@ export default function LandingPage({ onNavigate }) {
             </div>
             <h3 className="text-base font-bold text-gray-900 mb-1">Smart Stokvel Pots</h3>
             <p className="text-xs text-gray-500 leading-relaxed">
-              Rotation mode (ajo/chama) and Investment mode. Transparent smart-contract rule: round only pays out once every member has paid.
+              Explore rotation and investment pot concepts. Contributions and payouts are local demo records only.
             </p>
           </div>
 
@@ -195,7 +195,7 @@ export default function LandingPage({ onNavigate }) {
             </div>
             <h3 className="text-base font-bold text-gray-900 mb-1">Real-World Equities</h3>
             <p className="text-xs text-gray-500 leading-relaxed">
-              Fractional tokenised shares (tAAPL, tTSLA, tNVDA) traded 24/7 settled on-chain with backend signed price quotes.
+              Browse sample tokenised asset prices. Quotes and orders are simulated and do not settle on-chain.
             </p>
           </div>
         </section>

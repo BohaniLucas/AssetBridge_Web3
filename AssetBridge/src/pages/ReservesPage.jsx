@@ -10,13 +10,13 @@ export default function ReservesPage() {
         <div className="max-w-2xl">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 text-xs font-semibold text-emerald-300 mb-3 border border-emerald-500/30">
             <ShieldCheck size={14} />
-            <span>Transparency & Compliance Architecture</span>
+            <span>Reserve panel concept · sample data</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-2">
             Reserve & Attestation Panel
           </h2>
           <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">
-            Every tokenised equity and currency token issued on the AssetBridge network publishes real-time proof-of-reserve attestation hashes and custodian statements.
+            This screen illustrates the reserve information the product should show. No live reserve attestations, custodian statements, or verified token contracts are connected.
           </p>
         </div>
       </div>
@@ -27,11 +27,11 @@ export default function ReservesPage() {
           <div>
             <h3 className="text-lg font-bold text-gray-900">Tokenised Asset Issuers & Backing</h3>
             <p className="text-xs text-gray-500">
-              Verified testnet parameters tracking reference financial markets.
+              Illustrative metadata from local sample assets; not verified backing or custody information.
             </p>
           </div>
           <span className="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-            All 7 Assets Attested
+            Sample data only
           </span>
         </div>
 
@@ -42,8 +42,8 @@ export default function ReservesPage() {
                 <th className="pb-3">Asset</th>
                 <th className="pb-3">Issuer Entity</th>
                 <th className="pb-3">Backing & Custody Statement</th>
-                <th className="pb-3">Smart Contract</th>
-                <th className="pb-3 text-right">Attestation Status</th>
+                <th className="pb-3">Sample Contract Reference</th>
+                <th className="pb-3 text-right">Verification Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-gray-700">
@@ -68,15 +68,15 @@ export default function ReservesPage() {
 
                   <td className="py-4 pr-3 font-mono text-indigo-600">
                     <div className="flex items-center gap-1 cursor-pointer hover:underline">
-                      <span>{token.contractAddress}</span>
+                      <span>Sample only · {token.contractAddress}</span>
                       <ExternalLink size={11} />
                     </div>
                   </td>
 
                   <td className="py-4 text-right">
-                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
                       <CheckCircle2 size={12} />
-                      <span>Verified Live</span>
+                      <span>Unverified sample</span>
                     </span>
                   </td>
                 </tr>

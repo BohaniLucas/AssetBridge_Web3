@@ -113,9 +113,9 @@ function App() {
       onLogout={handleLogout}
       user={currentUser}
     >
-      {currentView === 'remittance' && <RemittancePage />}
-      {currentView === 'stokvel' && <StokvelPotsPage />}
-      {currentView === 'trading' && <TradingPage />}
+      {currentView === 'remittance' && <RemittancePage user={currentUser} />}
+      {currentView === 'stokvel' && <StokvelPotsPage user={currentUser} />}
+      {currentView === 'trading' && <TradingPage user={currentUser} />}
       {currentView === 'reserves' && <ReservesPage />}
     </DashboardPage>
   );

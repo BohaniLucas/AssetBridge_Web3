@@ -19,6 +19,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { remittanceService, FX_DESTINATIONS } from '../services/remittanceService';
+import { activityService } from '../services/activityService';
 
 const recipientMethods = [
   { id: 'username', label: 'Username', icon: UserRound, placeholder: '@recipient' },
@@ -28,7 +29,8 @@ const recipientMethods = [
 
 const amountPresets = [10, 25, 50, 100];
 
-export default function RemittancePage() {
+export default function RemittancePage({ user }) {
+  const storageUserId = user?.email || user?.id || 'demo';
   const [sendAmount, setSendAmount] = useState('100');
   const [selectedCurrency, setSelectedCurrency] = useState('tKES');
   const [recipientNumber, setRecipientNumber] = useState('+254 712 345 678');
@@ -71,16 +73,24 @@ export default function RemittancePage() {
 
     setTimeout(() => {
       setIsSending(false);
-      setReceipt({
+      const transferReceipt = {
         id: `tx-remit-${Date.now()}`,
-        txHash: `0x${Math.random().toString(16).substring(2, 10)}...9c1a`,
+        txHash: `demo-${Date.now()}`,
         amountUsdt: sendAmount,
         currencyCode: selectedCurrency,
         receivedFormatted: quote.assetBridge.receivedFormatted,
         recipient: recipientNumber,
         time: '3.1 seconds',
         timestamp: new Date().toLocaleTimeString(),
-      });
+      };
+      setReceipt(transferReceipt);
+      activityService.addActivity({
+        type: 'transfer',
+        title: `Demo transfer preview · ${selectedCurrency}`,
+        detail: `$${sendAmount} USDT estimate for ${recipientNumber} · no funds moved`,
+        status: 'simulated',
+        reference: transferReceipt.txHash,
+      }, storageUserId);
     }, 1000);
   };
 
@@ -90,11 +100,11 @@ export default function RemittancePage() {
         <div>
           <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-cyan-200/20 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-cyan-200">
             <Send size={13} />
-            Cross-border transfer
+            Cross-border transfer preview · simulated
           </div>
           <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Send money home</h2>
           <p className="mt-1 max-w-xl text-sm leading-relaxed text-slate-300">
-            Send USDT and see the local-currency estimate before you review and authorize.
+            Review a sample transfer estimate. Payout providers and settlement are not connected, so confirming records a local demo event only.
           </p>
         </div>
         <div className="flex items-center gap-2 self-start rounded-2xl border border-white/10 bg-white/5 p-2 sm:self-center">
@@ -279,13 +289,13 @@ export default function RemittancePage() {
               <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950 animate-fade-in">
                 <div className="flex items-center gap-2 font-bold">
                   <CheckCircle2 size={18} className="text-emerald-600" />
-                  Transfer confirmed in {receipt.time}
+                  Demo transfer recorded · no payout sent
                 </div>
                 <p className="mt-2 leading-relaxed">
-                  Sent <strong>${receipt.amountUsdt} USDT</strong> → <strong>{receipt.receivedFormatted}</strong> for {receipt.recipient}.
+                  Estimate: <strong>${receipt.amountUsdt} USDT</strong> → <strong>{receipt.receivedFormatted}</strong> for {receipt.recipient}.
                 </p>
                 <div className="mt-2 flex items-center gap-1.5 font-mono text-xs text-emerald-800">
-                  <span>Tx Hash: {receipt.txHash}</span>
+                  <span>Demo reference: {receipt.txHash} · not a transaction hash</span>
                   <ExternalLink size={12} />
                 </div>
               </div>
@@ -300,7 +310,7 @@ export default function RemittancePage() {
               <div className="flex items-center justify-between gap-3">
                 <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-teal-100">
                   <Sparkles size={13} />
-                  Live estimate
+                  Sample estimate
                 </div>
                 <span className="text-xs font-medium text-teal-100">Demo quote</span>
               </div>

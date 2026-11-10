@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { TrendingUp, RefreshCw, Clock, CheckCircle2, ShieldCheck, ArrowRightLeft } from 'lucide-react';
 import { TOKENS } from '../utils/constants';
 import { marketService } from '../services/marketService';
+import { activityService } from '../services/activityService';
 
-export default function TradingPage() {
+export default function TradingPage({ user }) {
+  const storageUserId = user?.email || user?.id || 'demo';
   const [selectedAsset, setSelectedAsset] = useState(TOKENS[1]); // tAAPL
   const [orderType, setOrderType] = useState('buy'); // 'buy' | 'sell'
   const [usdtAmount, setUsdtAmount] = useState('25');
@@ -30,9 +32,16 @@ export default function TradingPage() {
       usdtSpent: usdtAmount,
       tokensReceived: tokensBought,
       executionPrice: quote.executionPrice,
-      txHash: '0x' + Math.random().toString(16).substring(2, 12),
+      txHash: `demo-${Date.now()}`,
       timestamp: new Date().toLocaleTimeString(),
     });
+    activityService.addActivity({
+      type: 'trade',
+      title: `Demo ${orderType} order · ${selectedAsset.symbol}`,
+      detail: `$${usdtAmount} USDT · indicative quote only; no funds or assets moved`,
+      status: 'simulated',
+      reference: `demo-${Date.now()}`,
+    }, storageUserId);
   };
 
   return (
@@ -42,13 +51,13 @@ export default function TradingPage() {
         <div className="max-w-2xl">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-xs font-semibold text-sky-300 mb-3 border border-white/10">
             <TrendingUp size={14} />
-            <span>Real-World Assets Track Feature</span>
+            <span>Market preview · simulated quotes</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-2">
-            24/7 Tokenised Markets & Signed Quotes
+            Tokenised asset market preview
           </h2>
           <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">
-            Trade fractional US equities (tAAPL, tTSLA, tNVDA) and tokenised African FX. Backend signs price quotes valid for 15 seconds to eliminate front-running and slippage.
+            Indicative sample prices and locally generated quotes. Orders are recorded as demo activity only; this app is not connected to a broker, custodian, or blockchain settlement.
           </p>
         </div>
       </div>
@@ -108,8 +117,8 @@ export default function TradingPage() {
             {/* Trading Chart Mockup */}
             <div className="h-44 bg-gray-50 rounded-2xl p-4 flex flex-col justify-between border border-gray-100 relative">
               <div className="flex justify-between text-xs text-gray-400">
-                <span>Real-Time Reference Feed (Polygon.io & FX Data)</span>
-                <span className="text-emerald-600 font-bold">● Live 24/7 Market</span>
+                <span>Illustrative sample chart</span>
+                <span className="text-amber-700 font-bold">● Sample chart · not live</span>
               </div>
 
               {/* Chart Line */}
@@ -138,7 +147,7 @@ export default function TradingPage() {
         <div className="lg:col-span-5 bg-white rounded-3xl p-6 sm:p-7 border border-gray-100 shadow-sm flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-gray-900">Live Trading</h3>
+              <h3 className="text-xl font-bold text-gray-900">Demo order preview</h3>
               
               <div className="flex bg-gray-100 p-1 rounded-xl text-xs font-bold">
                 <button
@@ -183,13 +192,13 @@ export default function TradingPage() {
                 </div>
               </div>
 
-              {/* Signed Quote Info Box */}
+              {/* Local demo quote details */}
               {quote && (
                 <div className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-100 space-y-2 text-xs">
                   <div className="flex justify-between items-center">
                     <span className="text-indigo-950 font-bold flex items-center gap-1.5">
                       <Clock size={13} className="text-indigo-600" />
-                      <span>Backend Signed Quote</span>
+                      <span>Local demo quote</span>
                     </span>
                     <button
                       type="button"
@@ -202,17 +211,17 @@ export default function TradingPage() {
                   </div>
 
                   <div className="flex justify-between text-gray-600">
-                    <span>Execution Price:</span>
+                    <span>Indicative sample price:</span>
                     <span className="font-bold text-gray-900 font-mono">${quote.executionPrice}</span>
                   </div>
 
                   <div className="flex justify-between text-gray-600">
-                    <span>Spread / Slippage Buffer:</span>
+                    <span>Illustrative spread:</span>
                     <span className="text-gray-900">{quote.spreadPercent}</span>
                   </div>
 
                   <div className="flex justify-between text-gray-600">
-                    <span>Cryptographic Signature:</span>
+                    <span>Demo identifier:</span>
                     <span className="font-mono text-[10px] text-gray-500 truncate max-w-[140px]">
                       {quote.signature}
                     </span>
@@ -239,14 +248,14 @@ export default function TradingPage() {
             <div className="mt-4 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs animate-fade-in">
               <div className="flex items-center gap-2 font-bold text-sm mb-1 text-emerald-800">
                 <CheckCircle2 size={16} className="text-emerald-600" />
-                <span>Trade Settled On-Chain!</span>
+                <span>Demo order recorded · no settlement</span>
               </div>
               <p>
-                Successfully swapped <strong>${tradeSuccess.usdtSpent} USDT</strong> for{' '}
+                Preview: <strong>${tradeSuccess.usdtSpent} USDT</strong> for{' '}
                 <strong>{tradeSuccess.tokensReceived} {tradeSuccess.asset}</strong> at ${tradeSuccess.executionPrice}.
               </p>
               <div className="text-[11px] font-mono text-emerald-700 mt-1">
-                Tx Hash: {tradeSuccess.txHash}
+                Demo reference: {tradeSuccess.txHash} · not a blockchain transaction
               </div>
             </div>
           )}
