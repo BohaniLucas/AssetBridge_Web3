@@ -19,7 +19,7 @@ export default function Navbar({ title = 'Overview', user, onLogout }) {
               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
               : 'bg-amber-50 text-amber-700 border-amber-200'
           }`}
-          title={isSupaActive ? 'Connected to live Supabase backend' : 'Demo Mode: Add Supabase keys to .env anytime'}
+          title={isSupaActive ? 'Connected to live Supabase backend' : 'Backend Ready: Set Supabase credentials in .env'}
         >
           {isSupaActive ? (
             <>
@@ -29,7 +29,7 @@ export default function Navbar({ title = 'Overview', user, onLogout }) {
           ) : (
             <>
               <AlertCircle size={12} className="text-amber-600" />
-              <span>Supabase Ready (.env)</span>
+              <span>On-Chain Mode</span>
             </>
           )}
         </div>
@@ -55,8 +55,8 @@ export default function Navbar({ title = 'Overview', user, onLogout }) {
 
         {/* User Pill */}
         <div className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-full bg-white border border-gray-200 shadow-sm">
-          <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-sm overflow-hidden">
-            <span role="img" aria-label="avatar">👩🏾</span>
+          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-teal-600 to-indigo-600 text-white flex items-center justify-center font-bold text-xs uppercase shadow-sm">
+            {displayName ? displayName.charAt(0).toUpperCase() : 'U'}
           </div>
           <span className="text-sm font-semibold text-gray-800 max-w-[120px] truncate">
             {displayName}

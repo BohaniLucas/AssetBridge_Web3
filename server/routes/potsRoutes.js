@@ -4,21 +4,19 @@ import {
   getPot,
   createPot,
   contributeToPot,
-  advanceNextRound,
-  resetDemoPot
+  joinPot,
+  voteInvestment,
 } from '../controllers/potsController.js';
-import { requireAuth } from '../middlewares/authMiddleware.js';
-import { validateAmountInput } from '../middlewares/validationMiddleware.js';
 
 const router = express.Router();
 
 router.get('/', listPots);
 router.get('/:id', getPot);
 
-// Financial operations require authentication
-router.post('/', requireAuth, createPot);
-router.post('/:id/contribute', requireAuth, contributeToPot);
-router.post('/:id/next-round', requireAuth, advanceNextRound);
-router.post('/:id/reset-demo', resetDemoPot);
+// Financial and governance operations
+router.post('/', createPot);
+router.post('/join', joinPot);
+router.post('/:id/contribute', contributeToPot);
+router.post('/:id/vote', voteInvestment);
 
 export default router;

@@ -1,16 +1,60 @@
 import express from 'express';
-import { generateWallet, getWallet, verifySignature } from '../controllers/walletController.js';
+import { requireAdmin } from '../middlewares/authMiddleware.js';
+import {
+  generateWallet,
+  getWallet,
+  transfer,
+  getTransactions,
+  depositFaucet,
+  requestPayment,
+  getPaymentRequests,
+  fulfillPaymentRequest,
+  createPaymentLink,
+  getPaymentLink,
+  payPaymentLink,
+  createSplitPayment,
+  contributeSplitPayment,
+  getSplitPayments,
+  getNotifications,
+  markNotificationRead,
+  verifyBlockchainTx,
+  verifySignature,
+  getAdminOverview,
+} from '../controllers/walletController.js';
 
 const router = express.Router();
 
-// Generate a cryptographically verified Tether wallet
+// Wallet generation & retrieval
 router.post('/generate', generateWallet);
-
-// Get user's Tether wallet and live balance
 router.get('/:userId', getWallet);
+router.post('/faucet', depositFaucet);
 
-// Verify an EIP-191 signature against address
+// Direct P2P transfers & ledger
+router.post('/transfer', transfer);
+router.get('/:userId/transactions', getTransactions);
+router.post('/verify-tx', verifyBlockchainTx);
 router.post('/verify-signature', verifySignature);
 
-export default router;
+// Payment requests
+router.post('/request-payment', requestPayment);
+router.get('/:userId/payment-requests', getPaymentRequests);
+router.post('/payment-request/:id/fulfill', fulfillPaymentRequest);
 
+// Shareable payment links (WhatsApp)
+router.post('/payment-link', createPaymentLink);
+router.get('/payment-link/:id', getPaymentLink);
+router.post('/payment-link/:id/pay', payPaymentLink);
+
+// Group Split payments
+router.post('/split-payment', createSplitPayment);
+router.get('/:userId/split-payments', getSplitPayments);
+router.post('/split-payment/:id/contribute', contributeSplitPayment);
+
+// Notifications
+router.get('/:userId/notifications', getNotifications);
+router.post('/notifications/:id/read', markNotificationRead);
+
+// Admin Console
+router.get('/admin/overview', requireAdmin, getAdminOverview);
+
+export default router;

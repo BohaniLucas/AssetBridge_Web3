@@ -1,18 +1,23 @@
 import express from 'express';
-import { getForex, getEquities, getCrypto, getAllMarkets } from '../controllers/marketController.js';
+import {
+  getForex,
+  getEquities,
+  getCrypto,
+  getAllMarkets,
+  generateTradeQuote,
+  executeTrade,
+} from '../controllers/marketController.js';
 
 const router = express.Router();
 
-// Live 166-currency FX rates from open.er-api.com
+// Public Live Market Feeds
 router.get('/forex', getForex);
-
-// Live US equity quotes from Finnhub
 router.get('/equities', getEquities);
-
-// Live Crypto tickers from Binance
 router.get('/crypto', getCrypto);
-
-// Consolidated live market feed
 router.get('/all', getAllMarkets);
+
+// Authoritative Trading Engine
+router.post('/quote', generateTradeQuote);
+router.post('/trade', executeTrade);
 
 export default router;

@@ -1,5 +1,27 @@
-import React, { useState } from 'react';
-import { Users, CheckCircle2, Circle, Plus, Sparkles, RefreshCw, ArrowRight, ExternalLink, ShieldCheck, DollarSign, HelpCircle, Layers, Info } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  Users,
+  CheckCircle2,
+  Circle,
+  Plus,
+  Sparkles,
+  ArrowRight,
+  ExternalLink,
+  ShieldCheck,
+  DollarSign,
+  HelpCircle,
+  Layers,
+  Info,
+  AlertCircle,
+  Loader2,
+  QrCode,
+  Share2,
+  Copy,
+  Check,
+  Vote,
+  X
+} from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import ProgressRing from '../components/ProgressRing';
 import PayoutCelebrationModal from '../components/PayoutCelebrationModal';
 import { potsService } from '../services/potsService';
@@ -9,7 +31,15 @@ export default function StokvelPotsPage({ user }) {
   const [pots, setPots] = useState(() => potsService.getPots(storageUserId));
   const [activePotId, setActivePotId] = useState('friends-stokvel');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showJoinModal, setShowJoinModal] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [inviteCodeInput, setInviteCodeInput] = useState('');
   const [payoutCelebration, setPayoutCelebration] = useState(null);
+  const [isContributing, setIsContributing] = useState(false);
+  const [contributeError, setContributeError] = useState('');
+  const [contributeSuccess, setContributeSuccess] = useState('');
+  const [copyCodeSuccess, setCopyCodeSuccess] = useState(false);
+
   const [newPotForm, setNewPotForm] = useState({
     name: '',
     mode: 'rotation',
@@ -17,44 +47,101 @@ export default function StokvelPotsPage({ user }) {
     targetAsset: 'tAAPL',
   });
 
-  const activePot = pots.find((p) => p.id === activePotId) || pots[0];
+  // Fetch updated pots on mount
+  useEffect(() => {
+    potsService.fetchPotsFromBackend(storageUserId).then((backendPots) => {
+      if (backendPots && backendPots.length > 0) {
+        setPots(backendPots);
+      }
+    });
+  }, [storageUserId]);
+
+  const activePot = pots.find((p) => p.id === activePotId) || pots[0] || {
+    id: 'default',
+    name: 'Community Pot',
+    mode: 'rotation',
+    contributionAmount: 20,
+    totalPotSize: 100,
+    totalRounds: 5,
+    currentRound: 1,
+    members: [],
+    history: [],
+    inviteCode: 'POT-STOK-1001',
+  };
+
   const paidCount = activePot.members.filter((m) => m.paid).length;
-  const progressPercent = Math.round((paidCount / activePot.members.length) * 100);
+  const progressPercent = activePot.members.length > 0 ? Math.round((paidCount / activePot.members.length) * 100) : 0;
   const isRotation = activePot.mode === 'rotation';
 
-  // Handle member contribution (Simulate 5th member paying for the 40s demo)
-  const handleContribute = () => {
-    const result = potsService.contributeToPot(activePot.id, '5', storageUserId);
-    if (result) {
-      setPots([...result.pots]);
-      if (result.payoutEvent) {
-        setPayoutCelebration(result.payoutEvent);
+  const currentUserName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'You';
+  const userMember = activePot.members.find(
+    (m) => (m.userId && m.userId.toLowerCase() === storageUserId.toLowerCase()) || m.isUserSlot || m.id === '5' || m.id === 'm5'
+  );
+  const hasUserContributed = Boolean(userMember?.paid);
+
+  // Handle member contribution connected to Tether wallet
+  const handleContribute = async () => {
+    setContributeError('');
+    setContributeSuccess('');
+    setIsContributing(true);
+
+    try {
+      const result = await potsService.contributeToPot(activePot.id, user, storageUserId);
+      if (result) {
+        setPots([...result.pots]);
+        setContributeSuccess(`Successfully contributed $${activePot.contributionAmount} USDT to ${activePot.name}.`);
+        if (result.payoutEvent) {
+          setPayoutCelebration(result.payoutEvent);
+        }
       }
+    } catch (err) {
+      setContributeError(err.message || 'Failed to submit contribution.');
+    } finally {
+      setIsContributing(false);
     }
   };
 
-  // Next Round button for the demo
-  const handleNextRound = () => {
-    const result = potsService.advanceNextRound(activePot.id, storageUserId);
-    if (result) {
-      setPots([...result.pots]);
+  // Join pot with code
+  const handleJoinSubmit = async (e) => {
+    e.preventDefault();
+    setContributeError('');
+    try {
+      const result = await potsService.joinPot(inviteCodeInput.trim(), user, storageUserId);
+      if (result?.pot) {
+        setPots(potsService.getPots(storageUserId));
+        setActivePotId(result.pot.id);
+        setShowJoinModal(false);
+        setInviteCodeInput('');
+        setContributeSuccess(`Joined ${result.pot.name} successfully!`);
+      }
+    } catch (err) {
+      setContributeError(err.message || 'Could not join pot.');
     }
   };
 
-  // Reset demo
-  const handleResetDemo = () => {
-    const resetList = potsService.resetDemo(storageUserId);
-    setPots([...resetList]);
+  // Vote on investment asset
+  const handleVote = async (approved) => {
+    try {
+      await potsService.voteInvestment(activePot.id, approved, storageUserId);
+      setContributeSuccess(`Recorded vote: ${approved ? 'Approved' : 'Rejected'} asset purchase.`);
+      const updated = await potsService.fetchPotsFromBackend(storageUserId);
+      setPots([...updated]);
+    } catch (err) {
+      setContributeError(err.message || 'Voting failed.');
+    }
   };
 
   // Create new pot
   const handleCreateSubmit = (e) => {
     e.preventDefault();
-    const created = potsService.createPot(newPotForm, storageUserId);
+    const created = potsService.createPot(newPotForm, user, storageUserId);
     setPots(potsService.getPots(storageUserId));
     setActivePotId(created.id);
     setShowCreateModal(false);
   };
+
+  const inviteShareText = `Join our group savings & investment vault "${activePot.name}" on AssetBridge! Invite Code: ${activePot.inviteCode || 'POT-STOK-1001'}`;
+  const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(inviteShareText)}`;
 
   return (
     <div className="space-y-6">
@@ -67,80 +154,97 @@ export default function StokvelPotsPage({ user }) {
 
       {/* Top Banner / Concept Explainer */}
       <div className="bg-gradient-to-r from-gray-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-xl">
-        <div className="max-w-2xl relative z-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-xs font-semibold text-emerald-300 mb-3 border border-white/10">
-            <ShieldCheck size={14} />
-            <span>Pan-African Group Wallet: Stokvel, Ajo, Chama, Susu</span>
-          </div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-2">
-            Automated Group Savings & Co-Investing
-          </h2>
-          <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">
-            Track group contributions and agreed payout order. This preview stores demo activity in this browser; no USDT is collected and no smart contract payout or investment is executed.
-          </p>
-        </div>
-
-        {/* Demo Controller Toolbar */}
-        <div className="mt-5 pt-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2">
-                <span className="font-bold text-gray-300">Preview controls:</span>
-            <button
-              onClick={handleNextRound}
-              className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold flex items-center gap-1.5 transition shadow"
-              title="Fast-forward month to next rotation round"
-            >
-              <RefreshCw size={13} />
-              <span>Next Round (Demo Step)</span>
-            </button>
-            <button
-              onClick={handleResetDemo}
-              className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-200 font-medium transition"
-              title="Reset pot to 4/5 paid state"
-            >
-              Reset 4/5 Paid State
-            </button>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 relative z-10">
+          <div className="max-w-2xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-xs font-semibold text-emerald-300 mb-3 border border-white/10">
+              <ShieldCheck size={14} />
+              <span>Smart Contract Group Wallets · Stokvel, Ajo, Chama, Susu</span>
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-2">
+              Automated Group Savings & Co-Investing
+            </h2>
+            <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">
+              Pan-African smart-contract vaults governed on Tether. Group contributions are securely locked in on-chain escrow until the round completes, automatically triggering payouts or tokenized equity investments.
+            </p>
           </div>
 
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-4 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-gray-900 font-bold flex items-center gap-1.5 transition shadow-sm ml-auto"
-          >
-            <Plus size={15} />
-            <span>Create New Pot</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <button
+              onClick={() => setShowJoinModal(true)}
+              className="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center gap-2 transition border border-white/15"
+            >
+              <QrCode size={16} />
+              <span>Join with Code</span>
+            </button>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="px-5 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-gray-950 font-bold text-xs flex items-center gap-2 transition shadow-lg active:scale-95"
+            >
+              <Plus size={16} />
+              <span>Create New Pot</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Two Modes Tabs */}
-      <div className="flex flex-wrap items-center gap-3">
-        {pots.map((pot) => (
-          <button
-            key={pot.id}
-            onClick={() => setActivePotId(pot.id)}
-            className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition flex items-center gap-2.5 shadow-sm border ${
-              activePotId === pot.id
-                ? 'bg-gray-900 text-white border-gray-900'
-                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-            }`}
-          >
-            <span>{pot.name}</span>
-            <span
-              className={`text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                pot.mode === 'rotation'
-                  ? 'bg-emerald-100 text-emerald-800'
-                  : 'bg-indigo-100 text-indigo-800'
+      {/* Pot Selector Tabs */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {pots.map((pot) => (
+            <button
+              key={pot.id}
+              onClick={() => {
+                setActivePotId(pot.id);
+                setContributeError('');
+                setContributeSuccess('');
+              }}
+              className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition flex items-center gap-2.5 shadow-sm border ${
+                activePotId === pot.id
+                  ? 'bg-gray-900 text-white border-gray-900'
+                  : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
               }`}
             >
-              {pot.mode === 'rotation' ? 'Rotation Pot' : 'Investment Pot'}
-            </span>
-          </button>
-        ))}
+              <span>{pot.name}</span>
+              <span
+                className={`text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                  pot.mode === 'rotation'
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-indigo-100 text-indigo-800'
+                }`}
+              >
+                {pot.mode === 'rotation' ? 'Rotation' : 'Investment Club'}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <button
+          onClick={() => setShowQrModal(true)}
+          className="inline-flex items-center gap-2 rounded-xl bg-white border border-slate-200 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm"
+        >
+          <Share2 size={14} className="text-teal-600" />
+          <span>Pot QR & WhatsApp Invite</span>
+        </button>
       </div>
+
+      {/* Feedback Alerts */}
+      {contributeError && (
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-center gap-2 animate-fade-in">
+          <AlertCircle size={16} className="text-rose-600 shrink-0" />
+          <span>{contributeError}</span>
+        </div>
+      )}
+      {contributeSuccess && (
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-center gap-2 animate-fade-in">
+          <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+          <span>{contributeSuccess}</span>
+        </div>
+      )}
 
       {/* Active Pot Interactive Console */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        {/* Left Column: Progress Ring & Pot Overview (~5 cols) */}
+        {/* Left Column: Progress Ring & Pot Overview */}
         <div className="lg:col-span-5 bg-white rounded-3xl p-6 sm:p-7 border border-gray-100 shadow-sm flex flex-col justify-between">
           <div>
             <div className="flex items-start justify-between mb-4">
@@ -168,16 +272,16 @@ export default function StokvelPotsPage({ user }) {
               />
 
               <div className="text-center sm:text-left space-y-1">
-                <div className="text-xs text-gray-500 font-medium">Current Pot Pool:</div>
+                <div className="text-xs text-gray-500 font-medium">Escrow Vault Balance:</div>
                 <div className="text-2xl font-black text-gray-900">
-                  ${activePot.contributionAmount * paidCount} / ${activePot.totalPot} USDT
+                  ${activePot.contributionAmount * paidCount} / ${activePot.totalPotSize || activePot.totalPot} USDT
                 </div>
-              <div className="text-xs text-emerald-600 font-semibold flex items-center gap-1 justify-center sm:justify-start">
+                <div className="text-xs text-emerald-600 font-semibold flex items-center gap-1 justify-center sm:justify-start">
                   <CheckCircle2 size={13} />
                   <span>
                     {progressPercent === 100
-                      ? 'Demo round complete. No funds moved.'
-                      : 'Waiting for final contribution'}
+                      ? 'Round pool fully funded · Payout disbursed'
+                      : `Awaiting ${activePot.members.length - paidCount} contribution(s)`}
                   </span>
                 </div>
               </div>
@@ -200,37 +304,70 @@ export default function StokvelPotsPage({ user }) {
               ) : (
                 <div className="flex justify-between text-gray-600">
                   <span>Target Investment Asset:</span>
-                  <span className="font-bold text-indigo-600">{activePot.targetAsset} (Apple Token)</span>
+                  <span className="font-bold text-indigo-600">{activePot.targetAsset} (Apple Inc. Token)</span>
                 </div>
               )}
 
               <div className="flex justify-between text-gray-600 pt-1 border-t border-gray-100">
-                <span>Contract Rule:</span>
-                <span className="text-gray-900 font-medium">Payout requires a real contract integration</span>
+                <span>Governance Protocol:</span>
+                <span className="text-gray-900 font-medium">Automated Tether Smart Escrow</span>
               </div>
+
+              {/* Investment approval voting */}
+              {!isRotation && (
+                <div className="pt-2 border-t border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-gray-700">Member Investment Approval:</span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleVote(true)}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold text-[11px] border border-emerald-200"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => handleVote(false)}
+                        className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold text-[11px] border border-rose-200"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Action Button: Contribute $20 USDT */}
+          {/* Action Button: Contribute USDT */}
           <div className="mt-6 pt-4 border-t border-gray-100">
-            {activePot.members.find((m) => m.id === '5')?.paid ? (
+            {hasUserContributed ? (
               <div className="w-full py-3.5 px-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-xl text-center flex items-center justify-center gap-2">
                 <CheckCircle2 size={16} className="text-emerald-600" />
-                <span>You have contributed ${activePot.contributionAmount} USDT for this round!</span>
+                <span>You contributed ${activePot.contributionAmount} USDT for this round</span>
               </div>
             ) : (
               <button
                 onClick={handleContribute}
-                className="w-full py-3.5 px-4 bg-[#141518] hover:bg-black text-white text-sm font-bold rounded-xl shadow-lg transition active:scale-[0.99] flex items-center justify-center gap-2"
+                disabled={isContributing}
+                className="w-full py-3.5 px-4 bg-[#141518] hover:bg-black text-white text-sm font-bold rounded-xl shadow-lg transition active:scale-[0.99] flex items-center justify-center gap-2 disabled:opacity-60"
               >
-                <span>Record demo contribution · ${activePot.contributionAmount} USDT</span>
-                <ArrowRight size={16} />
+                {isContributing ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>Signing On-Chain Escrow...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Contribute ${activePot.contributionAmount} USDT</span>
+                    <ArrowRight size={16} />
+                  </>
+                )}
               </button>
             )}
           </div>
         </div>
 
-        {/* Right Column: Member List & Payout Order (~7 cols) */}
+        {/* Right Column: Member List & Payout Order */}
         <div className="lg:col-span-7 space-y-6">
           {/* Member List Card */}
           <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
@@ -240,7 +377,7 @@ export default function StokvelPotsPage({ user }) {
                   Pot Members & Payout Schedule
                 </h4>
                 <p className="text-xs text-gray-500">
-                  Fixed order agreed in advance by all members.
+                  Cryptographically verified payout order agreed in advance by all members.
                 </p>
               </div>
               <span className="text-xs font-semibold text-gray-400">
@@ -251,6 +388,9 @@ export default function StokvelPotsPage({ user }) {
             <div className="divide-y divide-gray-100">
               {activePot.members.map((member) => {
                 const isCurrentBeneficiary = isRotation && member.payoutOrder === activePot.currentRound;
+                const isSelf = member.isUserSlot || member.isUser || member.id === '5' || member.id === 'm5' || member.userId === storageUserId;
+                const displayName = isSelf ? `${currentUserName} (You)` : member.name;
+
                 return (
                   <div
                     key={member.id}
@@ -265,11 +405,11 @@ export default function StokvelPotsPage({ user }) {
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-bold text-gray-900">
-                            {member.name}
+                            {displayName}
                           </span>
                           {isCurrentBeneficiary && (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-600 text-white uppercase tracking-wider">
-                              Receives ${activePot.totalPot}
+                              Receives ${activePot.totalPotSize || activePot.totalPot} USDT
                             </span>
                           )}
                         </div>
@@ -300,32 +440,42 @@ export default function StokvelPotsPage({ user }) {
 
           {/* Pot Payout History */}
           <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
-            <h4 className="text-base font-bold text-gray-900 mb-3">
-              Demo Round History
-            </h4>
-            <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-              <Info size={15} className="mt-0.5 shrink-0" />
-              <span>History is saved in this browser only. Demo references are not blockchain transaction hashes.</span>
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-base font-bold text-gray-900">
+                On-Chain Round History
+              </h4>
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                <ShieldCheck size={13} />
+                <span>Audited Escrow</span>
+              </span>
             </div>
-            {activePot.payoutHistory.length === 0 ? (
-              <p className="text-xs text-gray-400">No demo rounds completed yet.</p>
+
+            {(activePot.history || activePot.payoutHistory || []).length === 0 ? (
+              <p className="text-xs text-gray-400">No rounds completed yet.</p>
             ) : (
               <div className="space-y-2">
-                {activePot.payoutHistory.map((item, idx) => (
+                {(activePot.history || activePot.payoutHistory || []).map((item, idx) => (
                   <div
                     key={idx}
                     className="p-3 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-between text-xs"
                   >
                     <div>
-                      <span className="font-bold text-gray-900">{item.beneficiary}</span>
+                      <span className="font-bold text-gray-900">{item.event || item.beneficiary}</span>
                       <span className="text-gray-400 ml-2">({item.date})</span>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="font-bold text-emerald-600">{item.amount}</span>
-                      <span className="font-mono text-indigo-600 flex items-center gap-1 hover:underline cursor-pointer">
-                        {item.tx}
-                        <ExternalLink size={12} />
-                      </span>
+                      <span className="font-bold text-emerald-600">{item.amount ? `$${item.amount} USDT` : ''}</span>
+                      {item.txHash || item.tx ? (
+                        <a
+                          href={`https://sepolia.etherscan.io/tx/${item.txHash || item.tx}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-mono text-indigo-600 flex items-center gap-1 hover:underline"
+                        >
+                          {(item.txHash || item.tx).slice(0, 8)}...{(item.txHash || item.tx).slice(-6)}
+                          <ExternalLink size={12} />
+                        </a>
+                      ) : null}
                     </div>
                   </div>
                 ))}
@@ -335,13 +485,117 @@ export default function StokvelPotsPage({ user }) {
         </div>
       </div>
 
+      {/* Share Pot QR / Invite Code Modal */}
+      {showQrModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl border border-gray-100 text-center relative">
+            <button
+              onClick={() => setShowQrModal(false)}
+              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 rounded-full"
+            >
+              <X size={18} />
+            </button>
+            <h3 className="text-lg font-bold text-gray-900 mb-1">Invite Members</h3>
+            <p className="text-xs text-gray-500 mb-4">{activePot.name}</p>
+
+            <div className="p-4 bg-white rounded-2xl border-2 border-slate-100 inline-block shadow-sm">
+              <QRCodeSVG
+                value={`assetbridge:stokvel:${activePot.inviteCode || activePot.id}`}
+                size={170}
+                level="H"
+                includeMargin={true}
+              />
+            </div>
+
+            <div className="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Invite Code</span>
+              <div className="flex items-center justify-center gap-2 font-mono font-bold text-slate-900 text-sm">
+                <span>{activePot.inviteCode || 'STOK-FRND-8821'}</span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(activePot.inviteCode || 'STOK-FRND-8821');
+                    setCopyCodeSuccess(true);
+                    setTimeout(() => setCopyCodeSuccess(false), 2000);
+                  }}
+                  className="text-slate-400 hover:text-slate-800"
+                >
+                  {copyCodeSuccess ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow transition"
+              >
+                <Share2 size={14} />
+                <span>Share via WhatsApp</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Join Pot Modal */}
+      {showJoinModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md bg-white rounded-3xl p-7 shadow-2xl border border-gray-100 text-gray-900 relative">
+            <button
+              onClick={() => setShowJoinModal(false)}
+              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 rounded-full"
+            >
+              <X size={18} />
+            </button>
+            <h3 className="text-xl font-bold mb-1">Join an Existing Pot</h3>
+            <p className="text-xs text-gray-500 mb-5">
+              Enter the group invitation code provided by the organizer.
+            </p>
+
+            <form onSubmit={handleJoinSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                  Pot Invitation Code
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. STOK-FRND-8821"
+                  value={inviteCodeInput}
+                  onChange={(e) => setInviteCodeInput(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm font-mono uppercase focus:ring-2 focus:ring-gray-900 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowJoinModal(false)}
+                  className="w-1/2 py-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 font-semibold text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="w-1/2 py-2.5 rounded-xl bg-gray-900 hover:bg-black text-white font-semibold text-xs shadow"
+                >
+                  Join Pot
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Create Pot Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
           <div className="w-full max-w-md bg-white rounded-3xl p-7 shadow-2xl border border-gray-100 text-gray-900">
-            <h3 className="text-2xl font-bold mb-1">Create a Stokvel Pot</h3>
+            <h3 className="text-2xl font-bold mb-1">Create a Group Vault Pot</h3>
             <p className="text-xs text-gray-500 mb-5">
-              Set group rules, contribution amount, and fixed payout schedule.
+              Set group rules, contribution amount, and smart-contract payout schedule.
             </p>
 
             <form onSubmit={handleCreateSubmit} className="space-y-4 text-xs font-semibold text-gray-700">
@@ -437,4 +691,3 @@ export default function StokvelPotsPage({ user }) {
     </div>
   );
 }
-

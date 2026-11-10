@@ -1,4 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../services/supabaseService.js';
+import { userService } from '../services/userService.js';
+import { walletService } from '../services/walletService.js';
 import { errorResponse } from '../utils/responseHelper.js';
 
 /**
@@ -15,10 +17,23 @@ export const requireAuth = async (req, res, next) => {
 
     const token = authHeader.split(' ')[1];
 
-    if (!token || token.length < 10) {
+    if (!token || token.length < 5) {
       return errorResponse(res, 'Access denied. Invalid authentication token.', 401);
     }
 
+    // First, verify against internal token provider & authoritative role store
+    const verifiedUser = userService.verifyToken(token);
+    if (verifiedUser) {
+      req.user = {
+        id: verifiedUser.id,
+        email: verifiedUser.email,
+        role: verifiedUser.role,
+        fullName: verifiedUser.fullName || verifiedUser.email.split('@')[0],
+      };
+      return next();
+    }
+
+    // Second, verify with Supabase if configured
     if (isSupabaseConfigured() && supabase) {
       const { data: { user }, error } = await supabase.auth.getUser(token);
 
@@ -26,23 +41,44 @@ export const requireAuth = async (req, res, next) => {
         return errorResponse(res, 'Session expired or invalid. Please log in again.', 401);
       }
 
-      req.user = user;
-      return next();
-    }
-
-    // Demo mode: accept valid demo tokens
-    if (token.startsWith('mock_jwt') || token.startsWith('demo-')) {
+      const role = userService.getRoleForEmail(user.email);
       req.user = {
-        id: 'demo-user-authenticated',
-        email: 'zoia@assetbridge.africa',
-        role: 'authenticated_user',
+        id: user.id,
+        email: user.email,
+        role,
+        fullName: user.user_metadata?.full_name || user.email.split('@')[0],
       };
       return next();
     }
 
-    return errorResponse(res, 'Invalid token provided.', 401);
+    return errorResponse(res, 'Invalid or expired token provided.', 401);
   } catch (err) {
-    return errorResponse(res, 'Authentication verification failed.', 500);
+    return errorResponse(res, 'Authentication verification failed: ' + err.message, 500);
   }
 };
 
+/**
+ * Strict Administrator Verification Middleware
+ * Guarantees that only cryptographically verified users with role === 'ADMIN'
+ * can access administration routes, data, or operational switches.
+ */
+export const requireAdmin = async (req, res, next) => {
+  // Enforce authentication first
+  return requireAuth(req, res, () => {
+    if (!req.user || req.user.role !== 'ADMIN') {
+      const actor = req.user?.email || req.ip || 'anonymous';
+      try {
+        walletService.recordAuditLog('UNAUTHORIZED_ADMIN_ACCESS_ATTEMPT', actor, {
+          path: req.originalUrl,
+          method: req.method,
+          ip: req.ip,
+        });
+      } catch {
+        // Continue to deny
+      }
+
+      return errorResponse(res, 'Access denied: Administrator privileges required.', 403);
+    }
+    next();
+  });
+};
