@@ -8,6 +8,7 @@ import authRoutes from './routes/authRoutes.js';
 import potsRoutes from './routes/potsRoutes.js';
 import remittanceRoutes from './routes/remittanceRoutes.js';
 import marketRoutes from './routes/marketRoutes.js';
+import walletRoutes from './routes/walletRoutes.js';
 import { sanitizeInputs } from './middlewares/validationMiddleware.js';
 
 dotenv.config();
@@ -94,6 +95,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/pots', potsRoutes);
 app.use('/api/remittance', remittanceRoutes);
 app.use('/api/market', marketRoutes);
+app.use('/api/wallet', walletRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

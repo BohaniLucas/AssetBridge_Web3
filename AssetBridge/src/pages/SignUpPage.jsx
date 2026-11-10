@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, ArrowLeft, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, ArrowLeft, Loader2, ShieldCheck } from 'lucide-react';
 import { authService } from '../services/authService';
+import { walletClientService } from '../services/walletClientService';
 
 export default function SignUpPage({ onNavigate, onSignUpSuccess }) {
   const [fullName, setFullName] = useState('');
@@ -28,6 +29,8 @@ export default function SignUpPage({ onNavigate, onSignUpSuccess }) {
     setIsLoading(true);
     try {
       const result = await authService.signUp(email, password, fullName);
+      // Cryptographically generate/bind their Tether (USDT) wallet address upon registration
+      await walletClientService.getOrCreateWallet(result.user);
       onSignUpSuccess(result.user);
     } catch (err) {
       setErrorMsg(err.message || 'Registration failed. Please check your details.');
@@ -40,6 +43,7 @@ export default function SignUpPage({ onNavigate, onSignUpSuccess }) {
     setIsLoading(true);
     try {
       const result = await authService.signUp('zoia@assetbridge.africa', 'Password123!', 'Zoia M.');
+      await walletClientService.getOrCreateWallet(result.user);
       onSignUpSuccess(result.user);
     } catch (err) {
       setErrorMsg(err.message || 'Google sign-up failed.');

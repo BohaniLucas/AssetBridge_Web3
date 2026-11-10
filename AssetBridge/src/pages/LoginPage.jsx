@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, ArrowLeft, Loader2 } from 'lucide-react';
 import { authService } from '../services/authService';
+import { walletClientService } from '../services/walletClientService';
 
 export default function LoginPage({ onNavigate, onLoginSuccess }) {
   const [email, setEmail] = useState('');
@@ -17,6 +18,7 @@ export default function LoginPage({ onNavigate, onLoginSuccess }) {
 
     try {
       const result = await authService.signIn(email, password);
+      await walletClientService.getOrCreateWallet(result.user);
       onLoginSuccess(result.user);
     } catch (err) {
       setErrorMsg(err.message || 'Invalid email or password.');
@@ -29,6 +31,7 @@ export default function LoginPage({ onNavigate, onLoginSuccess }) {
     setIsLoading(true);
     try {
       const result = await authService.signIn('zoia@assetbridge.africa', 'Password123!');
+      await walletClientService.getOrCreateWallet(result.user);
       onLoginSuccess(result.user);
     } catch (err) {
       setErrorMsg(err.message || 'Google sign-in failed.');

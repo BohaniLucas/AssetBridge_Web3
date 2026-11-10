@@ -1,25 +1,52 @@
-import { marketService } from '../services/marketService.js';
+import { marketDataService } from '../services/marketDataService.js';
 import { successResponse, errorResponse } from '../utils/responseHelper.js';
 
-export const getAssets = (req, res) => {
+export const getForex = async (req, res) => {
   try {
-    const assets = marketService.getAllAssets();
-    return successResponse(res, assets, 'Assets retrieved');
+    const forex = await marketDataService.getLiveForexRates();
+    return successResponse(res, forex, 'Live forex rates retrieved from open.er-api.com');
   } catch (err) {
     return errorResponse(res, err.message, 500);
   }
 };
 
-export const getSignedQuote = (req, res) => {
+export const getEquities = async (req, res) => {
   try {
-    const { pair } = req.query;
-    if (!pair) {
-      return errorResponse(res, 'Pair is required', 400);
-    }
-    const quote = marketService.getQuote(pair);
-    return successResponse(res, quote, 'Signed quote generated');
+    const equities = await marketDataService.getLiveEquities();
+    return successResponse(res, equities, 'Live equities retrieved from Finnhub');
   } catch (err) {
-    return errorResponse(res, err.message, 400);
+    return errorResponse(res, err.message, 500);
   }
 };
 
+export const getCrypto = async (req, res) => {
+  try {
+    const crypto = await marketDataService.getLiveCrypto();
+    return successResponse(res, crypto, 'Live crypto tickers retrieved from Binance');
+  } catch (err) {
+    return errorResponse(res, err.message, 500);
+  }
+};
+
+export const getAllMarkets = async (req, res) => {
+  try {
+    const [forex, equities, crypto] = await Promise.all([
+      marketDataService.getLiveForexRates(),
+      marketDataService.getLiveEquities(),
+      marketDataService.getLiveCrypto(),
+    ]);
+
+    return successResponse(
+      res,
+      {
+        forex,
+        equities,
+        crypto,
+        timestamp: new Date().toISOString(),
+      },
+      'Consolidated live market feeds'
+    );
+  } catch (err) {
+    return errorResponse(res, err.message, 500);
+  }
+};
