@@ -1,13 +1,35 @@
 /**
  * Remittance & P2P Service
- * Provides "Send Home in Local Currency" with comparison vs typical bank wire
+ * Provides "Send Home in Local Currency" with comparison vs typical bank wire across Worldwide Destinations
  */
 
 const FX_RATES = {
-  tKES: { name: 'Kenyan Shilling', rate: 129.50, symbol: 'KSh', flag: '🇰🇪' },
-  tZAR: { name: 'South African Rand', rate: 17.85, symbol: 'R', flag: '🇿🇦' },
-  tNGN: { name: 'Nigerian Naira', rate: 1660.00, symbol: '₦', flag: '🇳🇬' },
-  tGHS: { name: 'Ghanaian Cedi', rate: 15.40, symbol: 'GH₵', flag: '🇬🇭' },
+  // Africa
+  tKES: { name: 'Kenyan Shilling', rate: 129.50, symbol: 'KSh', flag: '🇰🇪', country: 'Kenya', region: 'Africa' },
+  tZAR: { name: 'South African Rand', rate: 17.85, symbol: 'R', flag: '🇿🇦', country: 'South Africa', region: 'Africa' },
+  tNGN: { name: 'Nigerian Naira', rate: 1660.00, symbol: '₦', flag: '🇳🇬', country: 'Nigeria', region: 'Africa' },
+  tGHS: { name: 'Ghanaian Cedi', rate: 15.40, symbol: 'GH₵', flag: '🇬🇭', country: 'Ghana', region: 'Africa' },
+  tUGX: { name: 'Ugandan Shilling', rate: 3680.00, symbol: 'USh', flag: '🇺🇬', country: 'Uganda', region: 'Africa' },
+  tRWF: { name: 'Rwandan Franc', rate: 1395.00, symbol: 'FRw', flag: '🇷🇼', country: 'Rwanda', region: 'Africa' },
+  tEGP: { name: 'Egyptian Pound', rate: 49.20, symbol: 'E£', flag: '🇪🇬', country: 'Egypt', region: 'Africa' },
+
+  // Americas
+  tUSD: { name: 'United States Dollar', rate: 1.00, symbol: '$', flag: '🇺🇸', country: 'United States', region: 'Americas' },
+  tCAD: { name: 'Canadian Dollar', rate: 1.39, symbol: 'CA$', flag: '🇨🇦', country: 'Canada', region: 'Americas' },
+  tBRL: { name: 'Brazilian Real', rate: 5.75, symbol: 'R$', flag: '🇧🇷', country: 'Brazil', region: 'Americas' },
+  tMXN: { name: 'Mexican Peso', rate: 20.15, symbol: 'Mex$', flag: '🇲🇽', country: 'Mexico', region: 'Americas' },
+
+  // Europe & UK
+  tGBP: { name: 'British Pound', rate: 0.79, symbol: '£', flag: '🇬🇧', country: 'United Kingdom', region: 'Europe & UK' },
+  tEUR: { name: 'Euro', rate: 0.93, symbol: '€', flag: '🇪🇺', country: 'Eurozone (EU)', region: 'Europe & UK' },
+  tCHF: { name: 'Swiss Franc', rate: 0.88, symbol: 'CHF', flag: '🇨🇭', country: 'Switzerland', region: 'Europe & UK' },
+
+  // Asia-Pacific
+  tINR: { name: 'Indian Rupee', rate: 84.35, symbol: '₹', flag: '🇮🇳', country: 'India', region: 'Asia-Pacific' },
+  tPHP: { name: 'Philippine Peso', rate: 58.70, symbol: '₱', flag: '🇵🇭', country: 'Philippines', region: 'Asia-Pacific' },
+  tAED: { name: 'UAE Dirham', rate: 3.67, symbol: 'AED', flag: '🇦🇪', country: 'United Arab Emirates', region: 'Asia-Pacific' },
+  tSGD: { name: 'Singapore Dollar', rate: 1.34, symbol: 'S$', flag: '🇸🇬', country: 'Singapore', region: 'Asia-Pacific' },
+  tJPY: { name: 'Japanese Yen', rate: 153.20, symbol: '¥', flag: '🇯🇵', country: 'Japan', region: 'Asia-Pacific' },
 };
 
 class RemittanceService {
@@ -22,7 +44,7 @@ class RemittanceService {
     const assetBridgeReceived = (amount - assetBridgeFee) * assetBridgeRate;
 
     // Traditional Bank Transfer / Legacy Money Transfer Operator (MTO) metrics:
-    const bankTransferFixedFee = 12.00; // $12 flat fee
+    const bankTransferFixedFee = 15.00; // $15 flat wire fee
     const bankFxMarkupPercent = 0.045; // 4.5% FX spread hidden fee
     const bankEffectiveRate = fxInfo.rate * (1 - bankFxMarkupPercent);
     const bankTotalFeeEquivalent = bankTransferFixedFee + (amount * bankFxMarkupPercent);
@@ -39,6 +61,8 @@ class RemittanceService {
       currencyName: fxInfo.name,
       currencySymbol: fxInfo.symbol,
       flag: fxInfo.flag,
+      country: fxInfo.country,
+      region: fxInfo.region,
       marketRate: fxInfo.rate,
       assetBridge: {
         feeUsd: assetBridgeFee,
@@ -76,8 +100,8 @@ class RemittanceService {
       success: true,
       transaction: {
         id: `tx-${Date.now()}`,
-        sender: transferData.senderUsername || 'You (0x92f...3b1)',
-        recipient: transferData.recipient || 'M-Pesa / Mobile Wallet (+254 712 345 678)',
+        sender: transferData.senderUsername || 'You (0x884a...12be)',
+        recipient: transferData.recipient || '+254 712 345 678',
         sendAmountUsdt: quote.sendAmount,
         receivedAmountLocal: quote.assetBridge.receivedAmount,
         targetCurrency: quote.targetCurrency,
@@ -94,4 +118,3 @@ class RemittanceService {
 }
 
 export const remittanceService = new RemittanceService();
-

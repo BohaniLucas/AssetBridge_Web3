@@ -17,8 +17,10 @@ import {
   Wallet,
   X,
   Zap,
+  Search,
+  Globe,
 } from 'lucide-react';
-import { remittanceService, FX_DESTINATIONS } from '../services/remittanceService';
+import { remittanceService, FX_DESTINATIONS, REGIONS } from '../services/remittanceService';
 import { activityService } from '../services/activityService';
 
 const recipientMethods = [
@@ -35,6 +37,8 @@ export default function RemittancePage({ user }) {
   const [selectedCurrency, setSelectedCurrency] = useState('tKES');
   const [recipientNumber, setRecipientNumber] = useState('+254 712 345 678');
   const [recipientMethod, setRecipientMethod] = useState('phone');
+  const [selectedRegion, setSelectedRegion] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [receipt, setReceipt] = useState(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -44,6 +48,27 @@ export default function RemittancePage({ user }) {
   const quote = remittanceService.calculateComparison(numAmount, selectedCurrency);
   const activeMethod = recipientMethods.find((method) => method.id === recipientMethod) || recipientMethods[1];
   const RecipientIcon = activeMethod.icon;
+
+  const filteredDestinations = FX_DESTINATIONS.filter((destination) => {
+    const matchesRegion = selectedRegion === 'All' || destination.region === selectedRegion;
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return matchesRegion;
+    return (
+      matchesRegion &&
+      (destination.country.toLowerCase().includes(q) ||
+        destination.name.toLowerCase().includes(q) ||
+        destination.code.toLowerCase().includes(q) ||
+        destination.mobileChannels.some((ch) => ch.toLowerCase().includes(q)))
+    );
+  });
+
+  const handleSelectDestination = (destination) => {
+    setSelectedCurrency(destination.code);
+    setFormError('');
+    if (recipientMethod === 'phone') {
+      setRecipientNumber(destination.defaultRecipient || '');
+    }
+  };
 
   const handleInitiateSend = (event) => {
     event.preventDefault();
@@ -169,7 +194,11 @@ export default function RemittancePage({ user }) {
                 required
                 value={recipientNumber}
                 onChange={(event) => setRecipientNumber(event.target.value)}
-                placeholder={activeMethod.placeholder}
+                placeholder={
+                  recipientMethod === 'phone'
+                    ? (quote.dest.recipientType || activeMethod.placeholder)
+                    : activeMethod.placeholder
+                }
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50/60 py-3.5 pl-12 pr-4 text-sm font-medium text-slate-900 outline-none transition placeholder:font-normal placeholder:text-slate-400 focus:border-teal-500 focus:bg-white focus:ring-4 focus:ring-teal-500/10"
               />
             </div>
@@ -179,28 +208,80 @@ export default function RemittancePage({ user }) {
               </p>
             ) : (
               <p className="mt-2 text-xs text-slate-500">
-                {recipientMethod === 'phone' ? 'Include the country code for mobile money delivery.' : 'Enter the recipient’s AssetBridge username.'}
+                {recipientMethod === 'phone'
+                  ? `Payout rails for ${quote.dest.country}: ${quote.dest.mobileChannels.join(', ')}`
+                  : 'Enter the recipient’s AssetBridge username.'}
               </p>
             )}
           </div>
 
           <form id="remittance-form" onSubmit={handleInitiateSend} className="space-y-6 px-5 py-5 sm:px-7 sm:py-6">
             <div>
-              <div className="mb-3 flex items-end justify-between gap-3">
+              <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <h3 className="text-base font-bold text-slate-950">Where should it go?</h3>
-                  <p className="mt-1 text-xs text-slate-500">Choose a local payout currency.</p>
+                  <h3 className="text-base font-bold text-slate-950 flex items-center gap-2">
+                    <Globe size={18} className="text-teal-600" />
+                    <span>Where should it go?</span>
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">Send money globally with instant local currency payout.</p>
                 </div>
-                <span className="text-[11px] font-medium text-slate-400">3 destinations</span>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-teal-50 px-2.5 py-1 text-[11px] font-bold text-teal-700 border border-teal-200">
+                  <span className="h-1.5 w-1.5 rounded-full bg-teal-500 animate-pulse" />
+                  {FX_DESTINATIONS.length} worldwide destinations
+                </span>
               </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                {FX_DESTINATIONS.map((destination) => {
+
+              {/* Region Filter Tabs */}
+              <div className="flex flex-wrap items-center gap-1.5 mb-3">
+                {REGIONS.map((region) => {
+                  const isSelected = selectedRegion === region;
+                  return (
+                    <button
+                      key={region}
+                      type="button"
+                      onClick={() => setSelectedRegion(region)}
+                      className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                        isSelected
+                          ? 'bg-slate-900 text-white shadow-sm'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                      }`}
+                    >
+                      {region}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Destination Search Bar */}
+              <div className="relative mb-3">
+                <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search country, currency, or rail (e.g. India, Pix, GCash, M-Pesa, SEPA)..."
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/70 py-2.5 pl-9 pr-8 text-xs font-medium text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:bg-white focus:ring-2 focus:ring-teal-500/10"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+
+              {/* Worldwide Destinations Grid */}
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 max-h-[310px] overflow-y-auto pr-1">
+                {filteredDestinations.map((destination) => {
                   const isSelected = selectedCurrency === destination.code;
                   return (
                     <button
                       key={destination.code}
                       type="button"
-                      onClick={() => setSelectedCurrency(destination.code)}
+                      onClick={() => handleSelectDestination(destination)}
                       aria-pressed={isSelected}
                       className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition ${
                         isSelected
@@ -208,20 +289,45 @@ export default function RemittancePage({ user }) {
                           : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
                       }`}
                     >
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-xl shadow-sm">{destination.flag}</span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-bold text-slate-900">{destination.country}</span>
-                        <span className="block truncate text-[11px] text-slate-500">{destination.mobileChannels[0]}</span>
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-xl shadow-sm">
+                        {destination.flag}
                       </span>
-                      <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
-                        isSelected ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-300 text-transparent'
-                      }`}>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center justify-between gap-1">
+                          <span className="block truncate text-sm font-bold text-slate-900">{destination.country}</span>
+                        </span>
+                        <span className="flex items-center justify-between text-[11px] text-slate-500">
+                          <span className="truncate">{destination.mobileChannels[0]}</span>
+                          <span className="font-mono font-semibold text-slate-700 shrink-0">{destination.code}</span>
+                        </span>
+                      </span>
+                      <span
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                          isSelected ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-300 text-transparent'
+                        }`}
+                      >
                         <CheckCircle2 size={13} />
                       </span>
                     </button>
                   );
                 })}
               </div>
+
+              {filteredDestinations.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-center text-xs text-slate-500">
+                  <p>No destinations found matching "{searchQuery}".</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setSelectedRegion('All');
+                    }}
+                    className="mt-2 font-bold text-teal-700 hover:underline"
+                  >
+                    Reset filters
+                  </button>
+                </div>
+              )}
             </div>
 
             <div>
@@ -452,12 +558,14 @@ export default function RemittancePage({ user }) {
                 <X size={18} />
               </button>
             </div>
-            <div className="mt-6 space-y-4 rounded-2xl bg-slate-50 p-4 text-sm">
+            <div className="mt-6 space-y-3 rounded-2xl bg-slate-50 p-4 text-sm">
+              <div className="flex justify-between gap-3"><span className="text-slate-500">Destination</span><strong className="text-right text-slate-900">{quote.dest.flag} {quote.dest.country} ({selectedCurrency})</strong></div>
+              <div className="flex justify-between gap-3"><span className="text-slate-500">Payout Rail</span><strong className="text-right text-slate-900">{quote.dest.mobileChannels[0]}</strong></div>
               <div className="flex justify-between gap-3"><span className="text-slate-500">Recipient</span><strong className="max-w-[65%] break-all text-right text-slate-900">{recipientNumber}</strong></div>
               <div className="flex justify-between gap-3"><span className="text-slate-500">You send</span><strong className="text-slate-900">${sendAmount} USDT</strong></div>
               <div className="flex justify-between gap-3"><span className="text-slate-500">Network fee</span><strong className="text-emerald-700">{quote.assetBridge.fee}</strong></div>
               <div className="flex justify-between gap-3"><span className="text-slate-500">Exchange rate</span><strong className="text-right text-slate-900">{quote.assetBridge.exchangeRateFormatted}</strong></div>
-              <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-4 text-base">
+              <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-3 text-base">
                 <span className="font-semibold text-slate-700">Recipient gets</span>
                 <strong className="text-right text-teal-800">{quote.assetBridge.receivedFormatted}</strong>
               </div>
