@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid, Send, Users, TrendingUp, ShieldCheck, LogOut, ArrowRightLeft } from 'lucide-react';
+import { LayoutGrid, Send, Users, TrendingUp, ShieldCheck, LogOut, ArrowRightLeft, Newspaper } from 'lucide-react';
 
 export default function Sidebar({ currentView, onNavigate, onLogout }) {
   const navItems = [
@@ -7,6 +7,7 @@ export default function Sidebar({ currentView, onNavigate, onLogout }) {
     { id: 'remittance', label: 'Send Home (Remittance)', icon: Send },
     { id: 'stokvel', label: 'Stokvel Pots', icon: Users },
     { id: 'trading', label: 'Trade Markets', icon: TrendingUp },
+    { id: 'news', label: 'News & Updates', icon: Newspaper },
     { id: 'reserves', label: 'Reserve Panel', icon: ShieldCheck },
   ];
 

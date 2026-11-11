@@ -7,6 +7,7 @@ import StokvelPotsPage from './pages/StokvelPotsPage';
 import RemittancePage from './pages/RemittancePage';
 import TradingPage from './pages/TradingPage';
 import ReservesPage from './pages/ReservesPage';
+import NewsPage from './pages/NewsPage';
 import { authService } from './services/authService';
 
 function App() {
@@ -42,7 +43,7 @@ function App() {
   // Secure navigation guard: protected routes require authentication
   const handleNavigate = (targetView) => {
     const view = targetView === 'dashboard' ? 'wallet' : targetView;
-    const protectedViews = ['wallet', 'remittance', 'stokvel', 'trading', 'reserves'];
+    const protectedViews = ['wallet', 'remittance', 'stokvel', 'trading', 'news', 'reserves'];
     if (protectedViews.includes(view) && !currentUser) {
       setSecurityNotice('Authentication required: please log in to access your secure wallet.');
       setCurrentView('login');
@@ -116,6 +117,7 @@ function App() {
       {currentView === 'remittance' && <RemittancePage user={currentUser} />}
       {currentView === 'stokvel' && <StokvelPotsPage user={currentUser} />}
       {currentView === 'trading' && <TradingPage user={currentUser} />}
+      {currentView === 'news' && <NewsPage />}
       {currentView === 'reserves' && <ReservesPage />}
     </DashboardPage>
   );

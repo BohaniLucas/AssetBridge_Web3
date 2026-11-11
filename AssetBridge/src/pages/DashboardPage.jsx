@@ -4,7 +4,7 @@ import {
   ArrowUpRight, ArrowRightLeft, MoreHorizontal, ArrowRight, Download,
   ChevronRight, LogOut, CircleDollarSign, BriefcaseBusiness, Globe2,
   Info, Activity, Layers3, ArrowUp, Copy, Check, QrCode, X,
-  ExternalLink, CheckCircle2, AlertTriangle, Sparkles,
+  ExternalLink, CheckCircle2, AlertTriangle, Sparkles, Newspaper,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { activityService, activityChangeEvent } from '../services/activityService';
@@ -119,6 +119,7 @@ export default function DashboardPage({ currentView, onNavigate, onLogout, user,
     { id: 'remittance', label: 'Send Home', icon: Send },
     { id: 'stokvel', label: 'Stokvel Pots', icon: Users },
     { id: 'trading', label: 'Trade Markets', icon: TrendingUp },
+    { id: 'news', label: 'News & Updates', icon: Newspaper },
     { id: 'reserves', label: 'Reserve Panel', icon: ShieldCheck },
   ];
   const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Wallet';

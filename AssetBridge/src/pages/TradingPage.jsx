@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   ArrowDownRight,
-  ArrowLeft,
   ArrowRight,
   ArrowUpRight,
   CheckCircle2,
@@ -122,10 +121,10 @@ export default function TradingPage({ user }) {
         <div className="absolute -right-10 -top-14 h-48 w-48 rounded-full bg-violet-300/30 blur-3xl" />
         <div className="relative grid items-center gap-4 md:grid-cols-[1fr_320px]">
           <div>
-            <div className="mb-5 flex items-center gap-2 text-xs font-bold text-slate-600"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm"><ArrowLeft size={15} /></span>Invest</div>
+            {/* <div className="mb-5 flex items-center gap-2 text-xs font-bold text-slate-600"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm"></span>Invest</div> */}
             <h1 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">Trade Global Assets</h1>
             <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-600 sm:text-base">Explore example prices for global shares and local currencies. Choose an asset to preview a demo buy.</p>
-            <span className="mt-4 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-900"><Info size={13} />Sample data · no real trades or funds moved</span>
+            {/* <span className="mt-4 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-900"><Info size={13} />Sample data · no real trades or funds moved</span> */}
           </div>
           <div className="h-40 md:h-48"><MarketIllustration /></div>
         </div>
