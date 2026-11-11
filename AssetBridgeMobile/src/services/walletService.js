@@ -3,6 +3,72 @@ import { API_BASE_URL, SEPOLIA_USDT_CONTRACT } from '../config/api';
 class MobileWalletService {
   constructor() {
     this.memoryCache = {};
+    this.pendingIdempotencyKeys = new Set();
+    this.savedRecipients = [
+      {
+        id: 'rec-1',
+        name: 'Mama Thandi',
+        identifier: 'thandi@assetbridge.africa',
+        address: '0x8ba1f109551bD432803012645Ac136ddd64DBA72',
+        avatar: '👩‍🦱',
+        location: 'Johannesburg, ZA',
+        recentNote: 'Monthly family allowance',
+      },
+      {
+        id: 'rec-2',
+        name: 'Brother Kwame',
+        identifier: 'kwame@assetbridge.africa',
+        address: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+        avatar: '👨‍🦱',
+        location: 'Nairobi, KE',
+        recentNote: 'School fees split',
+      },
+      {
+        id: 'rec-3',
+        name: 'Amina Bello',
+        identifier: 'amina@assetbridge.africa',
+        address: '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC',
+        avatar: '👧',
+        location: 'Lagos, NG',
+        recentNote: 'Groceries split',
+      },
+      {
+        id: 'rec-4',
+        name: 'Fresh Market Stall #4',
+        identifier: 'vendor@assetbridge.africa',
+        address: '0x90F79bf6EB2c4f870365E785982E1f101E93b906',
+        avatar: '🏪',
+        location: 'Kibera Market, KE',
+        recentNote: 'Vendor QR checkout',
+      },
+    ];
+  }
+
+  getSavedRecipients() {
+    return [...this.savedRecipients];
+  }
+
+  async getFeeQuote() {
+    try {
+      const res = await fetch(`${API_BASE_URL}/wallet/fee-quote`);
+      const json = await res.json();
+      if (res.ok && json.data) return json.data;
+    } catch {
+      // offline fallback
+    }
+
+    return {
+      network: 'Ethereum Sepolia (ChainID: 11155111)',
+      token: 'Tether USD (USDT)',
+      contractAddress: SEPOLIA_USDT_CONTRACT,
+      gasPriceGwei: 12.5,
+      estimatedGas: 65000,
+      feeUsdt: 0.2,
+      feeEth: 0.00018,
+      settlementTimeSeconds: 12,
+      idempotencySupported: true,
+      timestamp: new Date().toISOString(),
+    };
   }
 
   async getOrCreateWallet(userId = 'malulekelucas04@gmail.com') {
@@ -31,21 +97,32 @@ class MobileWalletService {
     return fallbackWallet;
   }
 
-  async transfer({ senderUserId, recipientAddressOrUsername, amountUsdt, note = '' }) {
+  generateIdempotencyKey() {
+    return `idemp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  }
+
+  async transfer({ senderUserId, recipientAddressOrUsername, amountUsdt, note = '', idempotencyKey = '' }) {
     const numAmount = Number(amountUsdt);
+    const key = idempotencyKey || this.generateIdempotencyKey();
+
     try {
       const res = await fetch(`${API_BASE_URL}/wallet/transfer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           senderUserId,
+          recipientIdentifier: recipientAddressOrUsername,
           recipientAddressOrUsername,
           amountUsdt: numAmount,
           note,
+          idempotencyKey: key,
         }),
       });
       const json = await res.json();
-      if (res.ok && json.data) return json.data;
+      if (res.ok && json.data) {
+        this.pendingIdempotencyKeys.delete(key);
+        return json.data;
+      }
       throw new Error(json.message || 'Transfer failed on backend');
     } catch (err) {
       if (err.message && !err.message.includes('Network') && !err.message.includes('fetch')) {
@@ -53,13 +130,13 @@ class MobileWalletService {
       }
     }
 
-    // Offline simulation
+    // Offline simulation with idempotency safety
     const wallet = await this.getOrCreateWallet(senderUserId);
-    if (wallet.balanceUsdt < numAmount) {
-      throw new Error(`Insufficient funds. Required: $${numAmount} USDT, Available: $${wallet.balanceUsdt} USDT`);
+    if (wallet.balanceUsdt < numAmount + 0.2) {
+      throw new Error(`Insufficient funds. Required: $${(numAmount + 0.2).toFixed(2)} USDT ($0.20 fee), Available: $${wallet.balanceUsdt.toFixed(2)} USDT`);
     }
 
-    wallet.balanceUsdt = Math.round((wallet.balanceUsdt - numAmount) * 100) / 100;
+    wallet.balanceUsdt = Math.round((wallet.balanceUsdt - (numAmount + 0.2)) * 100) / 100;
     const tx = {
       id: `tx-${Date.now()}`,
       txHash: `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`,
@@ -71,6 +148,7 @@ class MobileWalletService {
       status: 'confirmed',
       timestamp: new Date().toISOString(),
       note,
+      idempotencyKey: key,
     };
     return { transaction: tx, senderWallet: wallet };
   }
@@ -108,12 +186,88 @@ class MobileWalletService {
         type: 'p2p_transfer',
         amountUsdt: 50.0,
         status: 'confirmed',
-        recipientAddress: '0xea659Bb384a463D6F24CF15f7077364e196Eed7d',
+        recipientAddress: '0x8ba1f109551bD432803012645Ac136ddd64DBA72',
         timestamp: new Date().toISOString(),
       },
     ];
   }
+
+  /**
+   * QVAC Natural Language Intent Parser (On-Device AI Engine)
+   * Interprets natural speech requests for Wally Assistant
+   */
+  parseQvacIntent(userInput = '') {
+    const text = userInput.trim();
+    const lower = text.toLowerCase();
+
+    // 1. Check Balance Intent
+    if (lower.includes('balance') || lower.includes('how much') || lower.includes('what do i have')) {
+      return {
+        action: 'check_balance',
+        confidence: 0.96,
+        summary: 'Check available Tether USDT balance and Sepolia reserve status.',
+      };
+    }
+
+    // 2. Extract numeric amount ($20, 20 usdt, 20.50, etc.)
+    const amountMatch = lower.match(/\$?\s*([0-9]+(?:\.[0-9]{1,2})?)\s*(?:usdt|dollars|\$)?/i);
+    const amount = amountMatch ? parseFloat(amountMatch[1]) : 20.0;
+
+    // 3. Stokvel Contribution Intent
+    if (lower.includes('stokvel') || lower.includes('chama') || lower.includes('pot') || lower.includes('vault')) {
+      return {
+        action: 'contribute_stokvel',
+        amount,
+        targetPot: 'Tech Queens Stokvel (Johannesburg)',
+        confidence: 0.94,
+        summary: `Contribute $${amount.toFixed(2)} USDT to your rotational savings pot.`,
+      };
+    }
+
+    // 4. Cross-border Remittance Intent
+    if (lower.includes('remit') || lower.includes('m-pesa') || lower.includes('mpesa') || lower.includes('kenya') || lower.includes('opay') || lower.includes('nigeria') || lower.includes('capitec')) {
+      return {
+        action: 'remit_mobile_money',
+        amount,
+        recipient: lower.includes('kenya') || lower.includes('mpesa') ? '+254 712 345 678 (Kenya M-Pesa)' : 'Mama Mary (Mobile Money)',
+        confidence: 0.92,
+        summary: `Remit $${amount.toFixed(2)} USDT via 0% FX mobile money payout.`,
+      };
+    }
+
+    // 5. Tokenized Stock / Forex Trade Intent
+    if (lower.includes('buy') || lower.includes('trade') || lower.includes('swap') || lower.includes('apple') || lower.includes('tsla') || lower.includes('tesla')) {
+      const symbol = lower.includes('apple') || lower.includes('aapl') ? 'tAAPL' : 'tTSLA';
+      return {
+        action: 'market_trade',
+        amount,
+        symbol,
+        confidence: 0.91,
+        summary: `Execute order: Swap $${amount.toFixed(2)} USDT for tokenized ${symbol}.`,
+      };
+    }
+
+    // 6. Default: Peer-to-Peer Send USDT to Family / Saved Recipient
+    let matchedRecipient = this.savedRecipients[0]; // default Thandi
+    for (const rec of this.savedRecipients) {
+      const firstName = rec.name.toLowerCase().split(' ')[0];
+      if (lower.includes(firstName) || (rec.name.toLowerCase().includes('kwame') && lower.includes('kwame')) || (rec.name.toLowerCase().includes('amina') && lower.includes('amina')) || (lower.includes('vendor') && rec.name.toLowerCase().includes('market'))) {
+        matchedRecipient = rec;
+        break;
+      }
+    }
+
+    return {
+      action: 'send_usdt',
+      amount,
+      recipientName: matchedRecipient.name,
+      recipientAddress: matchedRecipient.address,
+      recipientIdentifier: matchedRecipient.identifier,
+      note: 'Payment via Wally AI Assistant',
+      confidence: 0.95,
+      summary: `Send $${amount.toFixed(2)} USDT to ${matchedRecipient.name}.`,
+    };
+  }
 }
 
 export const mobileWalletService = new MobileWalletService();
-

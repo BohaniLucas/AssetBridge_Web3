@@ -8,13 +8,14 @@ import {
   StatusBar,
 } from 'react-native';
 import WalletScreen from './src/screens/WalletScreen';
+import WallyScreen from './src/screens/WallyScreen';
 import RemittanceScreen from './src/screens/RemittanceScreen';
 import StokvelScreen from './src/screens/StokvelScreen';
 import MarketsScreen from './src/screens/MarketsScreen';
 import { mobileWalletService } from './src/services/walletService';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('wallet'); // 'wallet' | 'remittance' | 'stokvel' | 'markets'
+  const [activeTab, setActiveTab] = useState('wallet'); // 'wallet' | 'wally' | 'remittance' | 'stokvel' | 'markets'
   const [wallet, setWallet] = useState(null);
   const [currentUser] = useState('malulekelucas04@gmail.com');
 
@@ -107,6 +108,13 @@ export default function App() {
           />
         )}
 
+        {activeTab === 'wally' && (
+          <WallyScreen
+            wallet={wallet}
+            onExecuteTransfer={handleTransfer}
+          />
+        )}
+
         {activeTab === 'remittance' && (
           <RemittanceScreen
             wallet={wallet}
@@ -137,6 +145,14 @@ export default function App() {
         >
           <Text style={styles.tabIcon}>💳</Text>
           <Text style={[styles.tabLabel, activeTab === 'wallet' && styles.tabLabelActive]}>Wallet</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabBtn, activeTab === 'wally' && styles.tabBtnActive]}
+          onPress={() => setActiveTab('wally')}
+        >
+          <Text style={styles.tabIcon}>🤖</Text>
+          <Text style={[styles.tabLabel, activeTab === 'wally' && styles.tabLabelActive]}>Wally AI</Text>
         </TouchableOpacity>
 
         <TouchableOpacity

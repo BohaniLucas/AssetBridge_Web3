@@ -9,12 +9,16 @@ import TradingPage from './pages/TradingPage';
 import ReservesPage from './pages/ReservesPage';
 import AdminLoginPage from './pages/AdminLoginPage';
 import AdminPortalPage from './pages/AdminPortalPage';
+import ClaimMoneyPage from './pages/ClaimMoneyPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import { authService } from './services/authService';
 
 function App() {
   const [currentView, setCurrentView] = useState(() => {
     const hash = window.location.hash.toLowerCase();
+    const path = window.location.pathname.toLowerCase();
+    const search = window.location.search.toLowerCase();
+    if (hash.includes('/claim') || path.startsWith('/claim') || search.includes('claim=')) return 'claim';
     if (hash.includes('/admin/login')) return 'admin_login';
     if (hash.includes('/admin')) return 'admin_dashboard';
     if (hash.includes('/login')) return 'login';
@@ -75,7 +79,9 @@ function App() {
     // Listen to hash changes (browser back/forward & direct URL navigation)
     const handleHashChange = () => {
       const hash = window.location.hash.toLowerCase();
-      if (hash.includes('/admin/login')) {
+      if (hash.includes('/claim')) {
+        setCurrentView('claim');
+      } else if (hash.includes('/admin/login')) {
         setCurrentView('admin_login');
       } else if (hash.includes('/admin/dashboard') || hash.includes('/admin')) {
         authService.getCurrentAdmin().then((admin) => {
@@ -278,6 +284,11 @@ function App() {
         onAdminLoginSuccess={handleAdminLoginSuccess}
       />
     );
+  }
+
+  // 3.5. Public Claim Money Link for Gogo (Zero login, zero crypto)
+  if (currentView === 'claim') {
+    return <ClaimMoneyPage />;
   }
 
   // 4. Public Marketing Landing Page

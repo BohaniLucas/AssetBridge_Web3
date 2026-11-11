@@ -10,6 +10,7 @@ import remittanceRoutes from './routes/remittanceRoutes.js';
 import marketRoutes from './routes/marketRoutes.js';
 import walletRoutes from './routes/walletRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import claimRoutes from './routes/claimRoutes.js';
 import { sanitizeInputs } from './middlewares/validationMiddleware.js';
 
 dotenv.config();
@@ -98,6 +99,7 @@ app.use('/api/remittance', remittanceRoutes);
 app.use('/api/market', marketRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/claims', claimRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

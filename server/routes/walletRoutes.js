@@ -20,9 +20,13 @@ import {
   verifyBlockchainTx,
   verifySignature,
   getAdminOverview,
+  getFeeQuote,
 } from '../controllers/walletController.js';
 
 const router = express.Router();
+
+// Fee quote & network parameters (Tether WDK)
+router.get('/fee-quote', getFeeQuote);
 
 // Wallet generation & retrieval
 router.post('/generate', generateWallet);

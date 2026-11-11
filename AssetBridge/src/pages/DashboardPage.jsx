@@ -11,6 +11,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { activityService, activityChangeEvent } from '../services/activityService';
 import { walletClientService } from '../services/walletClientService';
 import { marketService } from '../services/marketService';
+import { claimClientService } from '../services/claimClientService';
 import SplitPaymentsView from '../components/SplitPaymentsView';
 
 export default function DashboardPage({ currentView, onNavigate, onLogout, user, children }) {
@@ -49,6 +50,15 @@ export default function DashboardPage({ currentView, onNavigate, onLogout, user,
   // Faucet state
   const [isClaimingFaucet, setIsClaimingFaucet] = useState(false);
   const [faucetMessage, setFaucetMessage] = useState('');
+
+  // Gogo WhatsApp Escrow Claim State
+  const [showGogoModal, setShowGogoModal] = useState(false);
+  const [gogoClaim, setGogoClaim] = useState(null);
+  const [gogoZar, setGogoZar] = useState('400');
+  const [gogoName, setGogoName] = useState('Gogo');
+  const [gogoPhone, setGogoPhone] = useState('+27 82 555 0192');
+  const [isCreatingGogo, setIsCreatingGogo] = useState(false);
+  const [isSimulatingGogo, setIsSimulatingGogo] = useState(false);
 
   // Notifications
   const [notifications, setNotifications] = useState([]);
@@ -187,6 +197,80 @@ export default function DashboardPage({ currentView, onNavigate, onLogout, user,
     }
   };
 
+  const handleCreateGogoClaim = async (e) => {
+    e.preventDefault();
+    setIsCreatingGogo(true);
+    const numZar = Number(gogoZar) || 400;
+    const numUsdt = Math.round((numZar / 20.0) * 100) / 100;
+
+    try {
+      // 1. Lock funds from user balance
+      await walletClientService.transferTether({
+        senderUserId: storageUserId,
+        recipientIdentifier: '0x7169D38820dfd117C3FA1f22a697dBA58d90BA06',
+        amountUsdt: numUsdt,
+        note: `Escrow claim contract: R${numZar} to ${gogoName}`,
+      });
+
+      // 2. Create claim record
+      const claim = await claimClientService.createClaimLink({
+        senderUserId: storageUserId,
+        senderName: displayName,
+        amountZar: numZar,
+        amountUsdt: numUsdt,
+        recipientName: gogoName,
+        recipientPhone: gogoPhone,
+        note: 'Sunday lunch & groceries',
+      });
+
+      setGogoClaim(claim);
+      await loadWallet();
+    } catch (err) {
+      alert('Failed to lock funds: ' + err.message);
+    } finally {
+      setIsCreatingGogo(false);
+    }
+  };
+
+  const handleSimulateGogoClaim = async () => {
+    if (!gogoClaim) return;
+    setIsSimulatingGogo(true);
+    try {
+      const result = await claimClientService.claimMoney({
+        claimId: gogoClaim.id,
+        secretCode: gogoClaim.secretCode,
+        phoneNumber: gogoClaim.recipientPhone,
+        smsCode: '123456',
+        pin: '2468',
+      });
+      setGogoClaim((prev) => ({
+        ...prev,
+        status: 'claimed',
+        claimedTxHash: result.claimedTxHash,
+        claimedAt: new Date().toLocaleTimeString(),
+      }));
+    } catch (err) {
+      alert('Claim simulation error: ' + err.message);
+    } finally {
+      setIsSimulatingGogo(false);
+    }
+  };
+
+  const handleRefundGogoClaim = async () => {
+    if (!gogoClaim) return;
+    try {
+      await claimClientService.refundClaimLink({
+        claimId: gogoClaim.id,
+        senderUserId: storageUserId,
+      });
+      setGogoClaim((prev) => ({ ...prev, status: 'refunded' }));
+      await loadWallet();
+      alert(`R${gogoClaim.amountZar} ($${gogoClaim.amountUsdt} USDT) refunded to your wallet.`);
+    } catch (err) {
+      alert('Refund failed: ' + err.message);
+    }
+  };
+
   useEffect(() => {
     const refresh = () => {
       setActivities(activityService.getActivities(storageUserId));
@@ -221,6 +305,7 @@ export default function DashboardPage({ currentView, onNavigate, onLogout, user,
 
   // Quick Actions (Pastel Theme)
   const quickActions = [
+    { id: 'gogo_claim', label: 'Send to Gogo (WhatsApp)', icon: MessageSquare, bg: 'bg-[#FFFBEB]', text: 'text-amber-800', iconBg: 'bg-amber-100', hover: 'hover:shadow-amber-500/20' },
     { id: 'send_tether', label: 'Send USDT', icon: Send, bg: 'bg-[#E5F9F0]', text: 'text-emerald-700', iconBg: 'bg-emerald-100', hover: 'hover:shadow-emerald-500/20' },
     { id: 'receive_tether', label: 'Receive QR', icon: Download, bg: 'bg-[#EAF3FF]', text: 'text-blue-700', iconBg: 'bg-blue-100', hover: 'hover:shadow-blue-500/20' },
     { id: 'payment_link', label: 'Payment Link', icon: Share2, bg: 'bg-[#FFF0F5]', text: 'text-pink-700', iconBg: 'bg-pink-100', hover: 'hover:shadow-pink-500/20' },
@@ -608,7 +693,8 @@ export default function DashboardPage({ currentView, onNavigate, onLogout, user,
                   <button
                     key={`${action.id}-${action.label}`}
                     onClick={() => {
-                      if (action.id === 'receive_tether') setShowReceiveModal(true);
+                      if (action.id === 'gogo_claim') setShowGogoModal(true);
+                      else if (action.id === 'receive_tether') setShowReceiveModal(true);
                       else if (action.id === 'send_tether') setShowSendModal(true);
                       else if (action.id === 'payment_link') setShowPaymentLinkModal(true);
                       else onNavigate(action.id);
@@ -1152,6 +1238,192 @@ export default function DashboardPage({ currentView, onNavigate, onLogout, user,
                   >
                     {isCreatingLink ? <Loader2 size={14} className="animate-spin" /> : <Share2 size={14} />}
                     <span>Generate Shareable Link</span>
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: SEND TO ANYONE VIA WHATSAPP (GOGO FLOW - ZERO CRYPTO) */}
+      {showGogoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md animate-fade-in">
+          <div role="dialog" aria-modal="true" className="w-full max-w-md rounded-[2.5rem] bg-white p-7 shadow-2xl border border-amber-100 text-slate-900 animate-scale-up">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-50 text-amber-700 text-xl">
+                  👵
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-950">Send via WhatsApp (Gogo Flow)</h3>
+                  <p className="text-xs text-slate-500">Recipient sees a Rand amount and zero crypto words</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGogoModal(false);
+                  setGogoClaim(null);
+                }}
+                className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {gogoClaim ? (
+              <div className="mt-5 text-center space-y-4">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 text-2xl">
+                  💌
+                </div>
+                <div>
+                  <h4 className="text-lg font-black text-slate-900">
+                    Nomsa sent R{gogoClaim.amountZar} to {gogoClaim.recipientName}
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Locked safely in Escrow Contract. Share via WhatsApp below:
+                  </p>
+                </div>
+
+                {/* WhatsApp Message Preview */}
+                <div className="p-4 bg-[#DCF8C6] border border-[#C5E1A5] rounded-2xl text-left text-xs text-emerald-950 leading-relaxed font-medium">
+                  {gogoClaim.whatsappMessage}
+                </div>
+
+                {/* Live Status Container */}
+                <div className="py-2">
+                  {gogoClaim.status === 'waiting' && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-amber-800">
+                      <Loader2 size={14} className="animate-spin text-amber-600" />
+                      <span>Waiting for {gogoClaim.recipientName} to claim (R{gogoClaim.amountZar} held)</span>
+                    </div>
+                  )}
+
+                  {gogoClaim.status === 'claimed' && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center space-y-1">
+                      <p className="text-xs font-black text-emerald-800">
+                        🎉 CLAIMED BY {gogoClaim.recipientName.toUpperCase()}!
+                      </p>
+                      <p className="text-[11px] text-emerald-600">
+                        R{gogoClaim.amountZar} released to her new custodial phone account
+                      </p>
+                      <p className="text-[10px] font-mono text-emerald-700">
+                        Tx: {gogoClaim.claimedTxHash?.slice(0, 16)}...
+                      </p>
+                    </div>
+                  )}
+
+                  {gogoClaim.status === 'refunded' && (
+                    <div className="p-3 bg-slate-100 rounded-xl text-xs font-bold text-slate-600">
+                      ↩️ Link Cancelled · Funds returned to your wallet
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="space-y-2 pt-2">
+                  <a
+                    href={`https://wa.me/?text=${encodeURIComponent(gogoClaim.whatsappMessage)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full py-3.5 px-4 rounded-xl bg-[#25D366] hover:bg-[#20ba59] text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow"
+                  >
+                    <MessageSquare size={16} />
+                    <span>Share on WhatsApp</span>
+                  </a>
+
+                  {gogoClaim.status === 'waiting' && (
+                    <div className="flex gap-2">
+                      <a
+                        href={`#/claim/${gogoClaim.id}?code=${gogoClaim.secretCode}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-1 py-3 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center gap-1.5 transition"
+                      >
+                        <ExternalLink size={13} />
+                        <span>Open Gogo Screen</span>
+                      </a>
+
+                      <button
+                        type="button"
+                        onClick={handleSimulateGogoClaim}
+                        disabled={isSimulatingGogo}
+                        className="flex-1 py-3 px-3 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-xs flex items-center justify-center gap-1.5 transition"
+                      >
+                        {isSimulatingGogo ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : (
+                          <span>⚡ Simulate Claim</span>
+                        )}
+                      </button>
+                    </div>
+                  )}
+
+                  {gogoClaim.status === 'waiting' && (
+                    <button
+                      type="button"
+                      onClick={handleRefundGogoClaim}
+                      className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 font-semibold text-xs transition"
+                    >
+                      Return to me (Cancel Link)
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleCreateGogoClaim} className="mt-5 space-y-4 text-xs font-semibold text-slate-700">
+                <div>
+                  <label className="block mb-1">Recipient Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={gogoName}
+                    onChange={(e) => setGogoName(e.target.value)}
+                    placeholder="e.g. Gogo"
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-normal focus:ring-2 focus:ring-amber-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block mb-1">Recipient Mobile Number</label>
+                  <input
+                    type="tel"
+                    required
+                    value={gogoPhone}
+                    onChange={(e) => setGogoPhone(e.target.value)}
+                    placeholder="+27 82 555 0192"
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-normal focus:ring-2 focus:ring-amber-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block mb-1">Amount to Send (South African Rand - ZAR)</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">R</span>
+                    <input
+                      type="number"
+                      min="10"
+                      step="any"
+                      required
+                      value={gogoZar}
+                      onChange={(e) => setGogoZar(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 text-sm font-black text-slate-900 focus:ring-2 focus:ring-amber-500 outline-none"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1 font-normal">
+                    Locks ${(Number(gogoZar) / 20.0).toFixed(2)} USDT into Escrow Claim Contract (+ $0.20 network gas).
+                  </p>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={isCreatingGogo}
+                    className="w-full py-3.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs shadow flex items-center justify-center gap-2 transition"
+                  >
+                    {isCreatingGogo ? <Loader2 size={14} className="animate-spin" /> : <Share2 size={14} />}
+                    <span>Lock in Escrow & Generate WhatsApp Link</span>
                   </button>
                 </div>
               </form>
