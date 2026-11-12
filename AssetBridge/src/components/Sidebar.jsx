@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid, Send, Users, TrendingUp, ShieldCheck, LogOut, ArrowRightLeft } from 'lucide-react';
+import { LayoutGrid, Send, Users, TrendingUp, ShieldCheck, LogOut, ArrowRightLeft, Newspaper } from 'lucide-react';
 
 export default function Sidebar({ currentView, onNavigate, onLogout }) {
   const navItems = [

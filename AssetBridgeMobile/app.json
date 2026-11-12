@@ -4,6 +4,16 @@
     "slug": "AssetBridgeMobile",
     "version": "1.0.0",
     "orientation": "portrait",
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow AssetBridgeMobile to use your camera to scan QR codes.",
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": true
+        }
+      ]
+    ],
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
