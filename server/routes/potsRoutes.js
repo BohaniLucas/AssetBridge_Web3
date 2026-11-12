@@ -1,22 +1,10 @@
 import express from 'express';
-import {
-  listPots,
-  getPot,
-  createPot,
-  contributeToPot,
-  joinPot,
-  voteInvestment,
-} from '../controllers/potsController.js';
+import { requireAuth } from '../middlewares/authMiddleware.js';
+import { financialFeatureUnavailable } from '../middlewares/featureUnavailable.js';
 
 const router = express.Router();
 
-router.get('/', listPots);
-router.get('/:id', getPot);
-
-// Financial and governance operations
-router.post('/', createPot);
-router.post('/join', joinPot);
-router.post('/:id/contribute', contributeToPot);
-router.post('/:id/vote', voteInvestment);
+router.use(requireAuth);
+router.all('*', financialFeatureUnavailable);
 
 export default router;

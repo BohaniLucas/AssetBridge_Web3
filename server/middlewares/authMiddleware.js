@@ -1,5 +1,4 @@
 import { supabase, isSupabaseConfigured } from '../services/supabaseService.js';
-import { userService } from '../services/userService.js';
 import { walletService } from '../services/walletService.js';
 import { errorResponse } from '../utils/responseHelper.js';
 
@@ -21,27 +20,14 @@ export const requireAuth = async (req, res, next) => {
       return errorResponse(res, 'Access denied. Invalid authentication token.', 401);
     }
 
-    // First, verify against internal token provider & authoritative role store
-    const verifiedUser = userService.verifyToken(token);
-    if (verifiedUser) {
-      req.user = {
-        id: verifiedUser.id,
-        email: verifiedUser.email,
-        role: verifiedUser.role,
-        fullName: verifiedUser.fullName || verifiedUser.email.split('@')[0],
-      };
-      return next();
-    }
-
-    // Second, verify with Supabase if configured
     if (isSupabaseConfigured() && supabase) {
       const { data: { user }, error } = await supabase.auth.getUser(token);
-
-      if (error || !user) {
+      if (error || !user || !user.email) {
         return errorResponse(res, 'Session expired or invalid. Please log in again.', 401);
       }
 
-      const role = userService.getRoleForEmail(user.email);
+      // Only Supabase app_metadata is server controlled. Never trust user_metadata or client roles.
+      const role = user.app_metadata?.role === 'ADMIN' ? 'ADMIN' : 'USER';
       req.user = {
         id: user.id,
         email: user.email,
@@ -51,7 +37,7 @@ export const requireAuth = async (req, res, next) => {
       return next();
     }
 
-    return errorResponse(res, 'Invalid or expired token provided.', 401);
+    return errorResponse(res, 'Authentication is unavailable because Supabase is not configured.', 503);
   } catch (err) {
     return errorResponse(res, 'Authentication verification failed: ' + err.message, 500);
   }

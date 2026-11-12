@@ -40,7 +40,20 @@ const saveStore = (filePath, data) => {
   }
 };
 
-let walletCache = loadStore(WALLET_STORE_PATH, {});
+// Keep legacy private keys and mnemonics off the server process heap. The legacy file
+// is intentionally preserved for a controlled recovery/migration; never write it back.
+const loadPublicWalletCache = () => Object.fromEntries(
+  Object.entries(loadStore(WALLET_STORE_PATH, {})).map(([userId, record]) => [userId, {
+    userId,
+    address: record.address,
+    publicKey: record.publicKey,
+    network: record.network,
+    contractAddress: record.contractAddress,
+    assetSymbol: record.assetSymbol,
+    createdAt: record.createdAt,
+  }]),
+);
+let walletCache = loadPublicWalletCache();
 let txCache = loadStore(TX_STORE_PATH, []);
 let requestCache = loadStore(REQUESTS_STORE_PATH, []);
 let splitCache = loadStore(SPLITS_STORE_PATH, []);
@@ -104,7 +117,7 @@ class WalletService {
   }
 
   readWallets() {
-    return walletCache;
+    return Object.fromEntries(Object.entries(walletCache).map(([userId, record]) => [userId, this.formatSafeWallet(record)]));
   }
 
   addNotification(userId, title, message, type = 'info', metadata = {}) {
@@ -139,42 +152,9 @@ class WalletService {
     return notif;
   }
 
-  /**
-   * Generates a real cryptographically verified Tether wallet for a user.
-   */
+  /** Wallet keys must be generated and held by the user's wallet client. */
   generateUserWallet(userId) {
-    if (!userId) throw new Error('User ID or email is required to generate wallet.');
-
-    if (walletCache[userId]) {
-      return this.formatSafeWallet(walletCache[userId]);
-    }
-
-    const randomWallet = ethers.Wallet.createRandom();
-
-    const walletRecord = {
-      userId,
-      address: ethers.getAddress(randomWallet.address),
-      publicKey: randomWallet.signingKey.publicKey,
-      privateKey: randomWallet.privateKey,
-      mnemonic: randomWallet.mnemonic?.phrase || null,
-      network: this.network,
-      contractAddress: this.contractAddress,
-      assetSymbol: 'USDT',
-      balanceUsdt: 1000.0, // Initial funding for testnet sandbox
-      tokenHoldings: {
-        tAAPL: 1.25,
-        tKES: 12950.0,
-      },
-      createdAt: new Date().toISOString(),
-    };
-
-    walletCache[userId] = walletRecord;
-    saveStore(WALLET_STORE_PATH, walletCache);
-
-    this.logAudit('WALLET_CREATED', userId, { address: walletRecord.address });
-    this.addNotification(userId, 'Tether Wallet Created', `Your cryptographic address is ${walletRecord.address}`, 'success');
-
-    return this.formatSafeWallet(walletRecord);
+    throw new Error('Server-side wallet creation is disabled. Create the wallet in the user-controlled WDK client; the server must never receive its recovery phrase or private key.');
   }
 
   getOrCreateWallet(userId) {
@@ -182,7 +162,7 @@ class WalletService {
     if (walletCache[userId]) {
       return this.formatSafeWallet(walletCache[userId]);
     }
-    return this.generateUserWallet(userId);
+    return null;
   }
 
   async getTetherBalance(address) {
@@ -194,14 +174,10 @@ class WalletService {
         const formatted = ethers.formatUnits(rawBalance, decimals);
         return parseFloat(formatted);
       }
-    } catch {
-      // Fallback
+    } catch (error) {
+      throw new Error(`Blockchain balance lookup failed: ${error.message}`);
     }
-
-    const userRecord = Object.values(walletCache).find(
-      (w) => w.address.toLowerCase() === address.toLowerCase()
-    );
-    return userRecord ? userRecord.balanceUsdt : 1000.0;
+    throw new Error('Blockchain RPC or verified token contract is not configured. Balance is unavailable.');
   }
 
   verifySignature(address, message, signature) {
@@ -242,104 +218,7 @@ class WalletService {
    * Authoritative P2P Send USDT transaction with double-spend protection & atomic balance update
    */
   async transfer({ senderUserId, recipientIdentifier, amountUsdt, note = '', idempotencyKey = '' }) {
-    if (!senderUserId) throw new Error('Sender ID required.');
-    if (!recipientIdentifier) throw new Error('Recipient identifier required.');
-
-    const numAmount = Number(amountUsdt);
-    if (!numAmount || numAmount <= 0) {
-      throw new Error('Transfer amount must be greater than 0 USDT.');
-    }
-
-    // Idempotency check
-    if (idempotencyKey && processedIdempotencyKeys.has(idempotencyKey)) {
-      const existing = txCache.find((t) => t.idempotencyKey === idempotencyKey);
-      if (existing) return existing;
-    }
-
-    const senderWallet = walletCache[senderUserId];
-    if (!senderWallet) {
-      throw new Error(`Sender wallet not found for user ${senderUserId}.`);
-    }
-
-    const fee = 0.20; // Standard $0.20 flat network gas fee
-    const totalRequired = numAmount + fee;
-
-    if (senderWallet.balanceUsdt < totalRequired) {
-      throw new Error(
-        `Insufficient Tether USDT balance. Required: $${totalRequired.toFixed(2)} USDT ($${numAmount.toFixed(2)} + $${fee.toFixed(2)} network fee), Available: $${senderWallet.balanceUsdt.toFixed(2)} USDT.`
-      );
-    }
-
-    // Resolve recipient
-    const recipientUser = this.findUserByIdentifier(recipientIdentifier);
-    let recipientAddress = recipientIdentifier;
-
-    if (recipientUser) {
-      recipientAddress = recipientUser.address;
-    } else if (ethers.isAddress(recipientIdentifier)) {
-      recipientAddress = ethers.getAddress(recipientIdentifier);
-    } else {
-      // Identifier is an external phone or username, create/allocate verified placeholder
-      recipientAddress = ethers.getAddress(ethers.hexlify(ethers.randomBytes(20)));
-    }
-
-    // Atomic Balance Deduction from Sender
-    senderWallet.balanceUsdt = Math.round((senderWallet.balanceUsdt - totalRequired) * 100) / 100;
-
-    // If internal recipient, atomically credit them
-    if (recipientUser) {
-      recipientUser.balanceUsdt = Math.round((recipientUser.balanceUsdt + numAmount) * 100) / 100;
-      this.addNotification(
-        recipientUser.userId,
-        'USDT Received',
-        `You received $${numAmount.toFixed(2)} USDT from ${senderUserId}`,
-        'success',
-        { amount: numAmount, sender: senderUserId }
-      );
-    }
-
-    // Generate cryptographic 32-byte EVM transaction hash
-    const realTxHash = ethers.hexlify(ethers.randomBytes(32));
-
-    const txRecord = {
-      id: `tx-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      txHash: realTxHash,
-      senderUserId,
-      senderAddress: senderWallet.address,
-      recipientIdentifier,
-      recipientAddress,
-      amountUsdt: numAmount,
-      feeUsdt: fee,
-      network: 'Tether (Sepolia EVM)',
-      contractAddress: this.contractAddress,
-      status: 'confirmed',
-      type: 'p2p_transfer',
-      note: note || 'Peer-to-peer USDT transfer',
-      idempotencyKey: idempotencyKey || null,
-      timestamp: new Date().toISOString(),
-    };
-
-    txCache.unshift(txRecord);
-    if (idempotencyKey) processedIdempotencyKeys.add(idempotencyKey);
-
-    saveStore(WALLET_STORE_PATH, walletCache);
-    saveStore(TX_STORE_PATH, txCache);
-
-    this.logAudit('TRANSFER_SUCCESS', senderUserId, {
-      txHash: realTxHash,
-      amount: numAmount,
-      recipient: recipientAddress,
-    });
-
-    this.addNotification(
-      senderUserId,
-      'Transfer Sent',
-      `Sent $${numAmount.toFixed(2)} USDT to ${recipientAddress.slice(0, 8)}... (Fee: $${fee.toFixed(2)})`,
-      'info',
-      { txHash: realTxHash }
-    );
-
-    return txRecord;
+    throw new Error('Transfers are disabled until client-side wallet signing, authenticated ownership, transaction submission, and chain receipt verification are implemented. No ledger transfer was recorded.');
   }
 
   /**
@@ -581,33 +460,7 @@ class WalletService {
    * Deposit Faucet for testing
    */
   depositFaucet(userId, amountUsdt = 250) {
-    const wallet = walletCache[userId];
-    if (!wallet) throw new Error('Wallet not found.');
-    const num = Number(amountUsdt);
-    wallet.balanceUsdt = Math.round((wallet.balanceUsdt + num) * 100) / 100;
-
-    const tx = {
-      id: `faucet-${Date.now()}`,
-      txHash: ethers.hexlify(ethers.randomBytes(32)),
-      senderUserId: 'Tether Faucet Reserve',
-      senderAddress: '0x0000000000000000000000000000000000000000',
-      recipientIdentifier: userId,
-      recipientAddress: wallet.address,
-      amountUsdt: num,
-      feeUsdt: 0,
-      network: 'Tether (Sepolia EVM)',
-      status: 'confirmed',
-      type: 'faucet_deposit',
-      timestamp: new Date().toISOString(),
-      note: 'Testnet Tether Faucet Credit',
-    };
-    txCache.unshift(tx);
-
-    saveStore(WALLET_STORE_PATH, walletCache);
-    saveStore(TX_STORE_PATH, txCache);
-
-    this.addNotification(userId, 'Faucet Funds Received', `+$${num} USDT deposited into your wallet.`, 'success');
-    return { wallet: this.formatSafeWallet(wallet), tx };
+    throw new Error('Server-side faucet credits are disabled. Request test tokens from a verified network faucet. No balance was credited.');
   }
 
   getTransactions(userId) {
@@ -624,28 +477,21 @@ class WalletService {
   }
 
   async verifyBlockchainTx(txHash) {
-    if (!txHash) return { verified: false, reason: 'Empty hash' };
-
-    // 1. Check local authoritative record
-    const recorded = txCache.find((t) => t.txHash?.toLowerCase() === txHash.toLowerCase());
-
-    // 2. Query Sepolia RPC if available
-    let onChainReceipt = null;
-    if (this.provider) {
-      try {
-        onChainReceipt = await this.provider.getTransactionReceipt(txHash);
-      } catch {
-        // RPC network failure or pending
-      }
-    }
-
+    if (!ethers.isHexString(txHash, 32)) throw new Error('A valid 32-byte transaction hash is required.');
+    if (!this.provider) throw new Error('Blockchain RPC is unavailable; transaction status cannot be verified.');
+    const onChainReceipt = await this.provider.getTransactionReceipt(txHash);
+    if (!onChainReceipt) return { txHash, status: 'pending', confirmed: false, blockNumber: null };
+    if (onChainReceipt.status === 0) return { txHash, status: 'failed', confirmed: false, blockNumber: onChainReceipt.blockNumber };
+    const latestBlock = await this.provider.getBlockNumber();
+    const confirmations = Math.max(0, latestBlock - onChainReceipt.blockNumber + 1);
+    const requiredConfirmations = 12;
     return {
       txHash,
-      isRecordedInLedger: Boolean(recorded),
-      isOnChainConfirmed: Boolean(onChainReceipt && onChainReceipt.status === 1),
-      status: onChainReceipt?.status === 1 ? 'finalized_on_chain' : (recorded ? 'confirmed_ledger' : 'unknown'),
-      record: recorded || null,
-      blockNumber: onChainReceipt?.blockNumber || null,
+      status: confirmations >= requiredConfirmations ? 'successful' : 'pending',
+      confirmed: confirmations >= requiredConfirmations,
+      confirmations,
+      requiredConfirmations,
+      blockNumber: onChainReceipt.blockNumber,
     };
   }
 
@@ -687,8 +533,8 @@ class WalletService {
       network: walletRecord.network,
       contractAddress: walletRecord.contractAddress,
       assetSymbol: walletRecord.assetSymbol,
-      balanceUsdt: walletRecord.balanceUsdt,
-      tokenHoldings: walletRecord.tokenHoldings || { tAAPL: 1.25, tKES: 12950.0 },
+      balanceUsdt: null,
+      tokenHoldings: {},
       createdAt: walletRecord.createdAt,
     };
   }

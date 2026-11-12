@@ -1,64 +1,40 @@
 import express from 'express';
-import { requireAdmin } from '../middlewares/authMiddleware.js';
-import {
-  generateWallet,
-  getWallet,
-  transfer,
-  getTransactions,
-  depositFaucet,
-  requestPayment,
-  getPaymentRequests,
-  fulfillPaymentRequest,
-  createPaymentLink,
-  getPaymentLink,
-  payPaymentLink,
-  createSplitPayment,
-  contributeSplitPayment,
-  getSplitPayments,
-  getNotifications,
-  markNotificationRead,
-  verifyBlockchainTx,
-  verifySignature,
-  getAdminOverview,
-  getFeeQuote,
-} from '../controllers/walletController.js';
+import { requireAuth, requireAdmin } from '../middlewares/authMiddleware.js';
+import { financialFeatureUnavailable } from '../middlewares/featureUnavailable.js';
+import { getWallet, verifyBlockchainTx, verifySignature } from '../controllers/walletController.js';
 
 const router = express.Router();
 
-// Fee quote & network parameters (Tether WDK)
-router.get('/fee-quote', getFeeQuote);
+// Never serve personal wallet data or financial operations without verified Supabase auth.
+router.use(requireAuth);
 
-// Wallet generation & retrieval
-router.post('/generate', generateWallet);
+// Wallet generation and transaction features remain disabled until WDK client signing is integrated.
+router.get('/fee-quote', financialFeatureUnavailable);
+router.post('/generate', financialFeatureUnavailable);
+router.get('/admin/overview', requireAdmin, financialFeatureUnavailable);
 router.get('/:userId', getWallet);
-router.post('/faucet', depositFaucet);
+router.post('/faucet', financialFeatureUnavailable);
 
-// Direct P2P transfers & ledger
-router.post('/transfer', transfer);
-router.get('/:userId/transactions', getTransactions);
+router.post('/transfer', financialFeatureUnavailable);
+router.get('/:userId/transactions', financialFeatureUnavailable);
 router.post('/verify-tx', verifyBlockchainTx);
 router.post('/verify-signature', verifySignature);
 
-// Payment requests
-router.post('/request-payment', requestPayment);
-router.get('/:userId/payment-requests', getPaymentRequests);
-router.post('/payment-request/:id/fulfill', fulfillPaymentRequest);
+router.post('/request-payment', financialFeatureUnavailable);
+router.get('/:userId/payment-requests', financialFeatureUnavailable);
+router.post('/payment-request/:id/fulfill', financialFeatureUnavailable);
 
-// Shareable payment links (WhatsApp)
-router.post('/payment-link', createPaymentLink);
-router.get('/payment-link/:id', getPaymentLink);
-router.post('/payment-link/:id/pay', payPaymentLink);
+router.post('/payment-link', financialFeatureUnavailable);
+router.get('/payment-link/:id', financialFeatureUnavailable);
+router.post('/payment-link/:id/pay', financialFeatureUnavailable);
 
-// Group Split payments
-router.post('/split-payment', createSplitPayment);
-router.get('/:userId/split-payments', getSplitPayments);
-router.post('/split-payment/:id/contribute', contributeSplitPayment);
+router.post('/split-payment', financialFeatureUnavailable);
+router.get('/:userId/split-payments', financialFeatureUnavailable);
+router.post('/split-payment/:id/contribute', financialFeatureUnavailable);
 
-// Notifications
-router.get('/:userId/notifications', getNotifications);
-router.post('/notifications/:id/read', markNotificationRead);
+router.get('/:userId/notifications', financialFeatureUnavailable);
+router.post('/notifications/:id/read', financialFeatureUnavailable);
 
 // Admin Console
-router.get('/admin/overview', requireAdmin, getAdminOverview);
 
 export default router;

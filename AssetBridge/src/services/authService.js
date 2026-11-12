@@ -30,6 +30,10 @@ export const authService = {
         throw new Error(data.message || 'Registration failed');
       }
 
+      if (!data.data?.token) {
+        return { user: data.data?.user || null, session: null, requiresEmailConfirmation: true, provider: 'supabase' };
+      }
+
       const session = {
         user: data.data.user,
         token: data.data.token,
@@ -37,7 +41,7 @@ export const authService = {
       localStorage.setItem(USER_SESSION_KEY, JSON.stringify(session));
       return { user: data.data.user, session, provider: 'backend_authoritative' };
     } catch (err) {
-      throw new Error(`Account creation failed. No local account was created. ${err.message}`);
+      throw new Error(`Account creation failed. No local account was created. ${err.message}`, { cause: err });
     }
   },
 
@@ -74,7 +78,7 @@ export const authService = {
         throw err;
       }
 
-      throw new Error(`Sign-in failed. Local demo authentication is disabled. ${err.message}`);
+      throw new Error(`Sign-in failed. Local demo authentication is disabled. ${err.message}`, { cause: err });
     }
   },
 

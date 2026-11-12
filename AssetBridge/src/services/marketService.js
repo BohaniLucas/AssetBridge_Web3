@@ -41,9 +41,8 @@ class MarketService {
 
   async fetchDirectPublicFeeds() {
     try {
-      const [fxRes, cryptoRes] = await Promise.allSettled([
+      const [fxRes] = await Promise.allSettled([
         fetch('https://open.er-api.com/v6/latest/USD'),
-        fetch('https://api.binance.com/api/v3/ticker/24hr?symbols=["BTCUSDT","ETHUSDT"]'),
       ]);
 
       if (fxRes.status === 'fulfilled' && fxRes.value.ok) {
@@ -68,7 +67,7 @@ class MarketService {
     }
   }
 
-  mergeMarketData({ forex, equities, crypto }) {
+  mergeMarketData({ forex, equities }) {
     this.cachedTokens = this.cachedTokens.map((token) => {
       if (equities && Array.isArray(equities)) {
         const eqMatch = equities.find((e) => e.symbol === token.symbol);
@@ -124,20 +123,8 @@ class MarketService {
     };
   }
 
-  async executeTrade({ userId, quoteId, symbol, action, amountUsdt }) {
-    try {
-      const res = await fetch(`${API_BASE}/market/trade`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, quoteId, symbol, action, amountUsdt }),
-      });
-      const json = await res.json();
-      if (res.ok && json.data) return json.data;
-      if (!res.ok) throw new Error(json.message || 'Trade execution failed.');
-    } catch (err) {
-      if (err.message && !err.message.includes('fetch')) throw err;
-    }
-    return null;
+  async executeTrade() {
+    throw new Error('Trading is disabled until a real signed transaction and network-confirmed settlement are integrated. No trade was submitted.');
   }
 
   getSignedQuote(symbol) {

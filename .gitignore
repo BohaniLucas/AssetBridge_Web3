@@ -38,3 +38,8 @@ Thumbs.db
 *.sln
 *.sw?
 
+# Isolated Tether WDK starter (standalone reference repository)
+wdk-starter/
+wdk-starter
+
+

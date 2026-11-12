@@ -2,30 +2,16 @@ import { walletService } from '../services/walletService.js';
 import { successResponse, errorResponse } from '../utils/responseHelper.js';
 
 export const generateWallet = (req, res) => {
-  try {
-    const { userId } = req.body;
-    if (!userId) {
-      return errorResponse(res, 'userId or email is required', 400);
-    }
-    const wallet = walletService.generateUserWallet(userId);
-    return successResponse(res, wallet, 'Cryptographically verified Tether wallet generated successfully', 201);
-  } catch (err) {
-    return errorResponse(res, err.message, 500);
-  }
+  return errorResponse(res, 'Server-side wallet generation is disabled. Create and secure the wallet in the user-controlled WDK client.', 503);
 };
 
 export const getWallet = async (req, res) => {
   try {
     const { userId } = req.params;
-    if (!userId) {
-      return errorResponse(res, 'userId is required', 400);
+    if (![req.user?.id, req.user?.email].includes(userId)) {
+      return errorResponse(res, 'You can only query the wallet linked to your authenticated account.', 403);
     }
-    const wallet = walletService.getOrCreateWallet(userId);
-    if (!wallet) {
-      return errorResponse(res, 'Wallet not found', 404);
-    }
-
-    return successResponse(res, wallet, 'User wallet retrieved');
+    return errorResponse(res, 'No user-controlled WDK wallet is linked to this account. Legacy server-generated wallet records require secure migration before they can be used.', 404);
   } catch (err) {
     return errorResponse(res, err.message, 500);
   }

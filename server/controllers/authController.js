@@ -1,5 +1,4 @@
 import { supabase, isSupabaseConfigured } from '../services/supabaseService.js';
-import { userService } from '../services/userService.js';
 import { walletService } from '../services/walletService.js';
 import { successResponse, errorResponse } from '../utils/responseHelper.js';
 
@@ -11,37 +10,31 @@ export const signUp = async (req, res) => {
       return errorResponse(res, 'Email and password are required', 400);
     }
 
-    // Authoritative backend registration enforcing role: 'USER'
-    const regResult = await userService.registerUser({ email, password, fullName });
-    const wallet = walletService.getOrCreateWallet(regResult.user.email);
-
-    // If Supabase is configured, also register in Supabase
-    if (isSupabaseConfigured() && supabase) {
-      try {
-        await supabase.auth.signUp({
-          email,
-          password,
-          options: { data: { full_name: fullName, role: regResult.user.role } },
-        });
-      } catch {
-        // Continue with local authoritative user
-      }
+    if (!isSupabaseConfigured() || !supabase) {
+      return errorResponse(res, 'Account creation is unavailable because Supabase Auth is not configured.', 503);
     }
-
-    walletService.recordAuditLog('USER_REGISTERED', regResult.user.email, {
-      role: regResult.user.role,
-      fullName: regResult.user.fullName,
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: fullName || '' } },
     });
+    if (error) return errorResponse(res, error.message, 400);
+    const authUser = data.user;
+    const user = {
+      id: authUser.id,
+      email: authUser.email,
+      fullName: authUser.user_metadata?.full_name || '',
+      role: 'USER',
+    };
+    walletService.recordAuditLog('USER_REGISTERED', user.email, { role: 'USER' });
 
     return successResponse(res, {
-      user: regResult.user,
-      wallet,
-      token: regResult.token,
-      session: {
-        access_token: regResult.token,
-        token_type: 'bearer',
-      },
-    }, 'Account registered successfully', 201);
+      user,
+      wallet: null,
+      token: data.session?.access_token || null,
+      session: data.session ? { access_token: data.session.access_token, token_type: 'bearer' } : null,
+      requiresEmailConfirmation: !data.session,
+    }, data.session ? 'Account registered successfully' : 'Check your email to confirm your account before signing in.', 201);
   } catch (err) {
     return errorResponse(res, err.message, err.statusCode || 400);
   }
@@ -55,19 +48,29 @@ export const signIn = async (req, res) => {
       return errorResponse(res, 'Email and password are required', 400);
     }
 
-    const authResult = await userService.authenticateUser(email, password);
-    const wallet = walletService.getOrCreateWallet(authResult.user.email);
+    if (!isSupabaseConfigured() || !supabase) {
+      return errorResponse(res, 'Sign-in is unavailable because Supabase Auth is not configured.', 503);
+    }
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error || !data.user || !data.session) return errorResponse(res, 'Invalid email or password.', 401);
+    const authUser = data.user;
+    const user = {
+      id: authUser.id,
+      email: authUser.email,
+      fullName: authUser.user_metadata?.full_name || '',
+      role: authUser.app_metadata?.role === 'ADMIN' ? 'ADMIN' : 'USER',
+    };
 
-    walletService.recordAuditLog('USER_LOGIN_SUCCESS', authResult.user.email, {
-      role: authResult.user.role,
+    walletService.recordAuditLog('USER_LOGIN_SUCCESS', user.email, {
+      role: user.role,
     });
 
     return successResponse(res, {
-      user: authResult.user,
-      wallet,
-      token: authResult.token,
+      user,
+      wallet: null,
+      token: data.session.access_token,
       session: {
-        access_token: authResult.token,
+        access_token: data.session.access_token,
         token_type: 'bearer',
       },
     }, 'Logged in successfully');
@@ -89,19 +92,31 @@ export const adminSignIn = async (req, res) => {
       return errorResponse(res, 'Email and password are required', 400);
     }
 
-    // Require role: 'ADMIN'
-    const authResult = await userService.authenticateUser(email, password, 'ADMIN');
+    if (!isSupabaseConfigured() || !supabase) {
+      return errorResponse(res, 'Admin sign-in is unavailable because Supabase Auth is not configured.', 503);
+    }
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error || !data.user || !data.session) return errorResponse(res, 'Invalid email or password.', 401);
+    if (data.user.app_metadata?.role !== 'ADMIN') {
+      return errorResponse(res, 'Access denied: administrator role is not assigned by the server.', 403);
+    }
+    const user = {
+      id: data.user.id,
+      email: data.user.email,
+      fullName: data.user.user_metadata?.full_name || '',
+      role: 'ADMIN',
+    };
 
-    walletService.recordAuditLog('ADMIN_LOGIN_SUCCESS', authResult.user.email, {
+    walletService.recordAuditLog('ADMIN_LOGIN_SUCCESS', user.email, {
       role: 'ADMIN',
       portal: 'ADMIN_PORTAL',
     });
 
     return successResponse(res, {
-      user: authResult.user,
-      token: authResult.token,
+      user,
+      token: data.session.access_token,
       session: {
-        access_token: authResult.token,
+        access_token: data.session.access_token,
         token_type: 'bearer',
       },
     }, 'Administrator authenticated successfully');
@@ -113,22 +128,21 @@ export const adminSignIn = async (req, res) => {
 
 export const getProfile = async (req, res) => {
   try {
-    const email = req.user?.email || req.query.email;
+    const email = req.user?.email;
     if (!email) {
       return errorResponse(res, 'Authentication required', 401);
     }
 
-    const role = userService.getRoleForEmail(email);
-    const wallet = walletService.getOrCreateWallet(email);
+    const role = req.user?.role || 'USER';
 
     return successResponse(res, {
       user: {
-        id: req.user?.id || email,
+        id: req.user?.id,
         email,
         fullName: req.user?.fullName || email.split('@')[0],
         role,
       },
-      wallet,
+      wallet: null,
     }, 'User profile retrieved');
   } catch (err) {
     return errorResponse(res, err.message, 500);

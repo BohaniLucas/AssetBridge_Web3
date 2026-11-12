@@ -28,35 +28,7 @@ export default function AdminConsoleView() {
   const loadData = async () => {
     setLoading(true);
     const data = await walletClientService.getAdminOverview();
-    if (data) {
-      setAdminData(data);
-    } else {
-      // Offline fallback
-      setAdminData({
-        stats: {
-          totalUsers: 4,
-          totalUsdtCirculating: 4250.0,
-          totalTransactions: 18,
-          totalVolumeUsdt: 8940.0,
-          activeSplitPayments: 2,
-        },
-        users: [
-          { userId: 'malulekelucas04@gmail.com', address: '0x4f0b819D2E527B13D774925dfc477284600be09f', balanceUsdt: 1000.0, network: 'Sepolia', assetSymbol: 'USDT' },
-          { userId: 'test_user@assetbridge.africa', address: '0xea659Bb384a463D6F24CF15f7077364e196Eed7d', balanceUsdt: 1250.0, network: 'Sepolia', assetSymbol: 'USDT' },
-          { userId: 'thandi@assetbridge.africa', address: '0x7169D38820dfd117C3FA1f22a697dBA58d90BA06', balanceUsdt: 950.0, network: 'Sepolia', assetSymbol: 'USDT' },
-          { userId: 'sipho@assetbridge.africa', address: '0x2f3A40A3db8a7e3D09B0adfEfbCe4f67d904297B', balanceUsdt: 1050.0, network: 'Sepolia', assetSymbol: 'USDT' },
-        ],
-        transactions: [
-          { id: 'tx-1', txHash: '0x8f2d59103e5c9a1b4d0812746bc3e2849f1a23847e908123456789abcdef0123', type: 'p2p_transfer', amountUsdt: 50, feeUsdt: 0.2, status: 'confirmed', timestamp: '2026-11-10T19:40:00Z', senderUserId: 'malulekelucas04@gmail.com', recipientAddress: '0xea659Bb384a463D6F24CF15f7077364e196Eed7d' },
-          { id: 'tx-2', txHash: '0x3a9e4726bf6201cba64f89d34e21a7c5b08df1278149e6fbc24a91083de21c9a', type: 'stokvel_contribution', amountUsdt: 20, feeUsdt: 0, status: 'confirmed', timestamp: '2026-11-10T18:15:00Z', senderUserId: 'test_user@assetbridge.africa', recipientAddress: '0x7169D38820dfd117C3FA1f22a697dBA58d90BA06' },
-        ],
-        auditLogs: [
-          { id: 'audit-1', action: 'WALLET_CREATED', actor: 'malulekelucas04@gmail.com', timestamp: '2026-11-10T19:43:02Z' },
-          { id: 'audit-2', action: 'TRANSFER_SUCCESS', actor: 'malulekelucas04@gmail.com', timestamp: '2026-11-10T19:45:12Z' },
-          { id: 'audit-3', action: 'STOKVEL_CONTRIBUTION', actor: 'test_user@assetbridge.africa', timestamp: '2026-11-10T18:15:00Z' },
-        ],
-      });
-    }
+    setAdminData(data || null);
     setLoading(false);
   };
 

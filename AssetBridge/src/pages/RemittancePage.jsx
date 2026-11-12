@@ -4,11 +4,9 @@ import {
   ArrowRight,
   BadgeCheck,
   Check,
-  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Clock3,
-  ExternalLink,
   Landmark,
   LockKeyhole,
   Phone,
@@ -24,9 +22,7 @@ import {
   Globe,
 } from 'lucide-react';
 import { remittanceService, FX_DESTINATIONS, REGIONS } from '../services/remittanceService';
-import { activityService } from '../services/activityService';
 import { walletClientService } from '../services/walletClientService';
-import { ethers } from 'ethers';
 
 const recipientMethods = [
   { id: 'username', label: 'Username', icon: UserRound, placeholder: '@recipient' },
@@ -37,7 +33,6 @@ const recipientMethods = [
 const amountPresets = [10, 25, 50, 100];
 
 export default function RemittancePage({ user }) {
-  const storageUserId = user?.email || user?.id || 'demo';
   const [destinations, setDestinations] = useState(FX_DESTINATIONS);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [sendAmount, setSendAmount] = useState('100');
@@ -47,7 +42,6 @@ export default function RemittancePage({ user }) {
   const [selectedRegion, setSelectedRegion] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const [receipt, setReceipt] = useState(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [formError, setFormError] = useState('');
   const [userWallet, setUserWallet] = useState(null);
@@ -129,38 +123,8 @@ export default function RemittancePage({ user }) {
 
   const handleConfirmAndSign = () => {
     setShowConfirmModal(false);
-    setIsSending(true);
-
-    setTimeout(() => {
-      setIsSending(false);
-
-      if (userWallet) {
-        userWallet.balanceUsdt = Math.max(0, userWallet.balanceUsdt - numAmount);
-        localStorage.setItem(`assetbridge_tether_wallet_${storageUserId}`, JSON.stringify(userWallet));
-        setUserWallet({ ...userWallet });
-      }
-
-      const realTxHash = ethers.hexlify(ethers.randomBytes(32));
-      const transferReceipt = {
-        id: `tx-remit-${Date.now()}`,
-        txHash: realTxHash,
-        amountUsdt: sendAmount,
-        currencyCode: selectedCurrency,
-        receivedFormatted: quote.assetBridge.receivedFormatted,
-        recipient: recipientNumber,
-        payoutRail: currentDest.mobileChannels[0],
-        time: '2.4 seconds',
-        timestamp: new Date().toLocaleTimeString(),
-      };
-      setReceipt(transferReceipt);
-      activityService.addActivity({
-        type: 'transfer',
-        title: `Remittance to ${currentDest.country} · ${selectedCurrency}`,
-        detail: `$${sendAmount} USDT sent to ${recipientNumber} via ${currentDest.mobileChannels[0]}`,
-        status: 'settled',
-        reference: transferReceipt.txHash,
-      }, storageUserId);
-    }, 1200);
+    setIsSending(false);
+    setFormError('Remittance is unavailable: no real transaction or payout provider is connected. No funds were sent.');
   };
 
   return (
@@ -510,29 +474,6 @@ export default function RemittancePage({ user }) {
               </span>
             </div>
 
-            {receipt && (
-              <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950 animate-fade-in">
-                <div className="flex items-center gap-2 font-bold">
-                  <CheckCircle2 size={18} className="text-emerald-600" />
-                  Transfer Completed & Settled
-                </div>
-                <p className="mt-2 leading-relaxed">
-                  Sent: <strong>${receipt.amountUsdt} USDT</strong> → <strong>{receipt.receivedFormatted}</strong> delivered to {receipt.recipient} via {receipt.payoutRail}.
-                </p>
-                <div className="mt-2 flex items-center gap-1.5 font-mono text-xs text-emerald-800">
-                  <a
-                    href={`https://sepolia.etherscan.io/tx/${receipt.txHash}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="truncate hover:underline flex items-center gap-1 text-teal-800 font-semibold"
-                    title={receipt.txHash}
-                  >
-                    <span>Tx Hash: {receipt.txHash.slice(0, 10)}...{receipt.txHash.slice(-8)}</span>
-                    <ExternalLink size={12} className="shrink-0" />
-                  </a>
-                </div>
-              </div>
-            )}
           </form>
         </section>
 

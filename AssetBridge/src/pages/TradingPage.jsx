@@ -14,7 +14,6 @@ import {
   AlertTriangle,
   ExternalLink,
 } from 'lucide-react';
-import { ethers } from 'ethers';
 import { marketService } from '../services/marketService';
 import { walletClientService } from '../services/walletClientService';
 import { activityService } from '../services/activityService';
@@ -123,7 +122,7 @@ export default function TradingPage({ user }) {
 
   // Load user wallet
   useEffect(() => {
-    walletClientService.getOrCreateWallet(user).then((w) => setUserWallet(w));
+    walletClientService.getOrCreateWallet(user).then(setUserWallet).catch(() => setUserWallet(null));
   }, [user]);
 
   // Update quote when selected asset changes
@@ -163,7 +162,11 @@ export default function TradingPage({ user }) {
     }
 
     // Verify wallet balance
-    const currentBalance = userWallet ? userWallet.balanceUsdt : 1000.0;
+    if (!userWallet) {
+      setTradeError('Connect a user-controlled wallet before trading. No trade was submitted.');
+      return;
+    }
+    const currentBalance = Number(userWallet.balanceUsdt);
     if (orderType === 'buy' && spendNum > currentBalance) {
       setTradeError(`Insufficient Tether balance. You have $${currentBalance.toFixed(2)} USDT available.`);
       return;
@@ -180,17 +183,19 @@ export default function TradingPage({ user }) {
         amountUsdt: spendNum,
       });
 
-      const txHash = serverResult?.txHash || ethers.hexlify(ethers.randomBytes(32));
-      const newBalance = serverResult ? serverResult.updatedBalanceUsdt : (orderType === 'buy' ? currentBalance - spendNum : currentBalance + spendNum);
-
-      if (userWallet) {
-        userWallet.balanceUsdt = newBalance;
-        if (serverResult?.updatedHoldings) {
-          userWallet.tokenHoldings = serverResult.updatedHoldings;
-        }
-        localStorage.setItem(`assetbridge_tether_wallet_${storageUserId}`, JSON.stringify(userWallet));
-        setUserWallet({ ...userWallet });
+      if (!serverResult?.txHash || serverResult.status !== 'successful') {
+        throw new Error('Trading service did not return a network-confirmed receipt. No trade was recorded.');
       }
+      const txHash = serverResult.txHash;
+      const newBalance = serverResult.updatedBalanceUsdt;
+
+      const updatedWallet = {
+        ...userWallet,
+        balanceUsdt: newBalance,
+        ...(serverResult.updatedHoldings ? { tokenHoldings: serverResult.updatedHoldings } : {}),
+      };
+      localStorage.setItem(`assetbridge_tether_wallet_${storageUserId}`, JSON.stringify(updatedWallet));
+      setUserWallet(updatedWallet);
 
       const receipt = {
         asset: selectedAsset.symbol,
@@ -242,7 +247,7 @@ export default function TradingPage({ user }) {
             <div>
               <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wide">Available Balance</p>
               <p className="text-xl font-extrabold text-white">
-                ${userWallet?.balanceUsdt?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '1,000.00'} <span className="text-teal-300 text-sm">USDT</span>
+                {userWallet?.balanceUsdt?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || 'Unavailable'} <span className="text-teal-300 text-sm">USDT</span>
               </p>
             </div>
           </div>
@@ -374,7 +379,7 @@ export default function TradingPage({ user }) {
                   {orderType === 'buy' ? 'Amount to Spend' : 'Amount to Receive'}
                 </label>
                 <span className="text-slate-500">
-                  Balance: <strong>${userWallet?.balanceUsdt?.toFixed(2) || '1,000.00'} USDT</strong>
+                  Balance: <strong>${userWallet?.balanceUsdt?.toFixed(2) || 'Unavailable'} USDT</strong>
                 </span>
               </div>
               <div className="relative">

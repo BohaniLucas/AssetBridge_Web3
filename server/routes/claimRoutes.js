@@ -1,19 +1,11 @@
 import express from 'express';
-import {
-  createClaim,
-  getClaim,
-  claimMoney,
-  refundClaim,
-  getSenderClaims,
-} from '../controllers/claimController.js';
+import { requireAuth } from '../middlewares/authMiddleware.js';
+import { financialFeatureUnavailable } from '../middlewares/featureUnavailable.js';
 
 const router = express.Router();
 
-router.post('/create', createClaim);
-router.get('/:id', getClaim);
-router.post('/:id/claim', claimMoney);
-router.post('/:id/refund', refundClaim);
-router.get('/sender/:userId', getSenderClaims);
+router.use(requireAuth);
+router.all('*', financialFeatureUnavailable);
 
 export default router;
 
