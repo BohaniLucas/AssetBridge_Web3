@@ -1,182 +1,155 @@
 import React, { useState, useEffect } from 'react';
 import {
-  StyleSheet,
-  Text,
-  View,
   SafeAreaView,
+  StyleSheet,
+  View,
+  Text,
   TouchableOpacity,
   StatusBar,
+  Platform,
+  Alert,
 } from 'react-native';
-import WalletScreen from './src/screens/WalletScreen';
-import WallyScreen from './src/screens/WallyScreen';
+import HomeScreen from './src/screens/HomeScreen';
 import RemittanceScreen from './src/screens/RemittanceScreen';
 import StokvelScreen from './src/screens/StokvelScreen';
 import MarketsScreen from './src/screens/MarketsScreen';
 import { mobileWalletService } from './src/services/walletService';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('wallet'); // 'wallet' | 'wally' | 'remittance' | 'stokvel' | 'markets'
+  const [currentTab, setCurrentTab] = useState('wallet'); // 'wallet' | 'remittance' | 'stokvel' | 'markets'
   const [wallet, setWallet] = useState(null);
-  const [currentUser] = useState('malulekelucas04@gmail.com');
+  const [refreshing, setRefreshing] = useState(false);
 
   const loadWallet = async () => {
-    const data = await mobileWalletService.getOrCreateWallet(currentUser);
-    setWallet({ ...data });
+    try {
+      const w = await mobileWalletService.getWallet();
+      setWallet(w);
+    } catch {
+      // Fallback
+    }
   };
 
   useEffect(() => {
     loadWallet();
   }, []);
 
-  const handleTransfer = async ({ recipient, amount, note }) => {
-    const result = await mobileWalletService.transfer({
-      senderUserId: currentUser,
-      recipientAddressOrUsername: recipient,
-      amountUsdt: amount,
-      note,
-    });
-    if (result.senderWallet) {
-      setWallet({ ...result.senderWallet });
-    } else {
-      await loadWallet();
-    }
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadWallet();
+    setRefreshing(false);
   };
 
   const handleFaucet = async () => {
-    const result = await mobileWalletService.claimFaucet(currentUser);
-    if (result.wallet) {
-      setWallet({ ...result.wallet });
+    try {
+      const updated = await mobileWalletService.requestFaucet();
+      setWallet(updated);
+      Alert.alert('Faucet Credited', '+250.00 USDT added to your Sepolia wallet balance!');
+    } catch (err) {
+      Alert.alert('Faucet Failed', err.message || 'Error requesting testnet USDT');
     }
   };
 
-  const handleSendRemittance = async ({ amountUsdt, recipient }) => {
-    await handleTransfer({
-      recipient,
-      amount: amountUsdt,
-      note: 'Cross-border remittance',
-    });
+  const handleTransfer = async ({ recipient, amount, note }) => {
+    const res = await mobileWalletService.transferUsdt({ recipient, amount, note });
+    await loadWallet();
+    return res;
   };
 
-  const handleContributeStokvel = async ({ amountUsdt }) => {
-    await handleTransfer({
-      recipient: '0x7169D38820dfd117C3FA1f22a697dBA58d90BA06',
-      amount: amountUsdt,
-      note: 'Stokvel monthly round contribution',
-    });
-  };
-
-  const handleTrade = async ({ symbol, amountUsdt }) => {
-    await handleTransfer({
-      recipient: '0x2f3A40A3db8a7e3D09B0adfEfbCe4f67d904297B',
-      amount: amountUsdt,
-      note: `Swap Tether for ${symbol}`,
-    });
+  const handleNavigate = (tabName) => {
+    if (tabName === 'remittance' || tabName === 'remit') {
+      setCurrentTab('remittance');
+    } else if (tabName === 'stokvel' || tabName === 'pots') {
+      setCurrentTab('stokvel');
+    } else if (tabName === 'markets' || tabName === 'trade') {
+      setCurrentTab('markets');
+    } else {
+      setCurrentTab('wallet');
+    }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="light-content" backgroundColor="#101936" />
 
-      {/* Mobile Top Header */}
-      <View style={styles.header}>
-        <View style={styles.brandRow}>
+      {/* Top Header Navbar */}
+      <View style={styles.navBar}>
+        <View style={styles.brandGroup}>
           <View style={styles.logoBadge}>
             <Text style={styles.logoText}>AB</Text>
           </View>
           <View>
-            <Text style={styles.brandTitle}>AssetBridge Mobile</Text>
-            <Text style={styles.userSubtitle}>{currentUser}</Text>
+            <Text style={styles.brandTitle}>AssetBridge</Text>
+            <View style={styles.networkBadge}>
+              <View style={styles.liveDot} />
+              <Text style={styles.networkText}>Sepolia EVM · Pure Fintech</Text>
+            </View>
           </View>
         </View>
 
-        <View style={styles.headerRight}>
-          <View style={styles.liveBadge}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>Sepolia</Text>
-          </View>
+        <View style={styles.userChip}>
+          <Text style={styles.userInitial}>M</Text>
+          <Text style={styles.userEmail} numberOfLines={1}>
+            malulekelucas04@gmail.com
+          </Text>
         </View>
       </View>
 
-      {/* Screen Switcher */}
+      {/* Main Screen Body */}
       <View style={styles.screenContainer}>
-        {activeTab === 'wallet' && (
-          <WalletScreen
+        {currentTab === 'wallet' && (
+          <HomeScreen
             wallet={wallet}
-            onRefresh={loadWallet}
+            onRefresh={handleRefresh}
             onTransfer={handleTransfer}
             onFaucet={handleFaucet}
+            onNavigate={handleNavigate}
           />
         )}
-
-        {activeTab === 'wally' && (
-          <WallyScreen
-            wallet={wallet}
-            onExecuteTransfer={handleTransfer}
-          />
-        )}
-
-        {activeTab === 'remittance' && (
-          <RemittanceScreen
-            wallet={wallet}
-            onSendRemittance={handleSendRemittance}
-          />
-        )}
-
-        {activeTab === 'stokvel' && (
-          <StokvelScreen
-            wallet={wallet}
-            onContribute={handleContributeStokvel}
-          />
-        )}
-
-        {activeTab === 'markets' && (
-          <MarketsScreen
-            wallet={wallet}
-            onTrade={handleTrade}
-          />
-        )}
+        {currentTab === 'remittance' && <RemittanceScreen />}
+        {currentTab === 'stokvel' && <StokvelScreen />}
+        {currentTab === 'markets' && <MarketsScreen />}
       </View>
 
-      {/* Modern Bottom Navigation Bar */}
-      <View style={styles.bottomBar}>
+      {/* Bottom Tab Bar */}
+      <View style={styles.tabBar}>
+        {/* Tab 1: Wallet */}
         <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'wallet' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('wallet')}
+          style={styles.tabItem}
+          onPress={() => setCurrentTab('wallet')}
+          activeOpacity={0.7}
         >
-          <Text style={styles.tabIcon}>💳</Text>
-          <Text style={[styles.tabLabel, activeTab === 'wallet' && styles.tabLabelActive]}>Wallet</Text>
+          <Text style={[styles.tabIcon, currentTab === 'wallet' && styles.tabIconActive]}>💳</Text>
+          <Text style={[styles.tabLabel, currentTab === 'wallet' && styles.tabLabelActive]}>Wallet</Text>
         </TouchableOpacity>
 
+        {/* Tab 2: Remit */}
         <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'wally' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('wally')}
+          style={styles.tabItem}
+          onPress={() => setCurrentTab('remittance')}
+          activeOpacity={0.7}
         >
-          <Text style={styles.tabIcon}>🤖</Text>
-          <Text style={[styles.tabLabel, activeTab === 'wally' && styles.tabLabelActive]}>Wally AI</Text>
+          <Text style={[styles.tabIcon, currentTab === 'remittance' && styles.tabIconActive]}>🌍</Text>
+          <Text style={[styles.tabLabel, currentTab === 'remittance' && styles.tabLabelActive]}>Remit</Text>
         </TouchableOpacity>
 
+        {/* Tab 3: Stokvels */}
         <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'remittance' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('remittance')}
+          style={styles.tabItem}
+          onPress={() => setCurrentTab('stokvel')}
+          activeOpacity={0.7}
         >
-          <Text style={styles.tabIcon}>🌍</Text>
-          <Text style={[styles.tabLabel, activeTab === 'remittance' && styles.tabLabelActive]}>Remit</Text>
+          <Text style={[styles.tabIcon, currentTab === 'stokvel' && styles.tabIconActive]}>👥</Text>
+          <Text style={[styles.tabLabel, currentTab === 'stokvel' && styles.tabLabelActive]}>Stokvels</Text>
         </TouchableOpacity>
 
+        {/* Tab 4: Markets */}
         <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'stokvel' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('stokvel')}
+          style={styles.tabItem}
+          onPress={() => setCurrentTab('markets')}
+          activeOpacity={0.7}
         >
-          <Text style={styles.tabIcon}>👥</Text>
-          <Text style={[styles.tabLabel, activeTab === 'stokvel' && styles.tabLabelActive]}>Stokvels</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'markets' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('markets')}
-        >
-          <Text style={styles.tabIcon}>📈</Text>
-          <Text style={[styles.tabLabel, activeTab === 'markets' && styles.tabLabelActive]}>Markets</Text>
+          <Text style={[styles.tabIcon, currentTab === 'markets' && styles.tabIconActive]}>📈</Text>
+          <Text style={[styles.tabLabel, currentTab === 'markets' && styles.tabLabelActive]}>Markets</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -184,38 +157,129 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFFFFF' },
-  header: {
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#101936',
+    paddingTop: Platform.OS === 'android' ? 30 : 0,
+  },
+  navBar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    backgroundColor: '#101936',
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    backgroundColor: '#FFFFFF',
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
   },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  logoBadge: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#00C29A', alignItems: 'center', justifyContent: 'center' },
-  logoText: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
-  brandTitle: { fontSize: 14, fontWeight: '800', color: '#0F172A' },
-  userSubtitle: { fontSize: 10, color: '#64748B' },
-  headerRight: { flexDirection: 'row', alignItems: 'center' },
-  liveBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ECFDF5', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981', marginRight: 5 },
-  liveText: { fontSize: 10, fontWeight: '700', color: '#065F46' },
-  screenContainer: { flex: 1 },
-  bottomBar: {
+  brandGroup: {
     flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 8,
-    paddingBottom: 16,
+    alignItems: 'center',
   },
-  tabBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 4 },
-  tabBtnActive: {},
-  tabIcon: { fontSize: 18, marginBottom: 2 },
-  tabLabel: { fontSize: 10, fontWeight: '600', color: '#94A3B8' },
-  tabLabelActive: { color: '#00C29A', fontWeight: '800' },
+  logoBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#00C29A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+    shadowColor: '#00C29A',
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  logoText: {
+    color: '#101936',
+    fontWeight: '900',
+    fontSize: 16,
+  },
+  brandTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  networkBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 1,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#00C29A',
+    marginRight: 5,
+  },
+  networkText: {
+    color: '#94A3B8',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  userChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    maxWidth: 130,
+  },
+  userInitial: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#00C29A',
+    color: '#101936',
+    textAlign: 'center',
+    lineHeight: 20,
+    fontSize: 11,
+    fontWeight: '900',
+    marginRight: 6,
+  },
+  userEmail: {
+    color: '#E2E8F0',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  screenContainer: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+  },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    paddingVertical: 8,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 10,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+  },
+  tabItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabIcon: {
+    fontSize: 18,
+    marginBottom: 3,
+    opacity: 0.6,
+  },
+  tabIconActive: {
+    opacity: 1,
+    transform: [{ scale: 1.1 }],
+  },
+  tabLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  tabLabelActive: {
+    color: '#00C29A',
+    fontWeight: '800',
+  },
 });
