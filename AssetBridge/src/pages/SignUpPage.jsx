@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
+<<<<<<< HEAD
+import { Eye, EyeOff, ArrowLeft, Loader2 } from 'lucide-react';
+=======
 import { Eye, EyeOff, ArrowLeft, Loader2, ShieldCheck } from 'lucide-react';
+>>>>>>> b4057178646f826080d12db3ea3f2e243cc63b13
 import { authService } from '../services/authService';
 import { walletClientService } from '../services/walletClientService';
 
@@ -43,7 +47,10 @@ export default function SignUpPage({ onNavigate, onSignUpSuccess }) {
     setIsLoading(true);
     try {
       const result = await authService.signUp('zoia@assetbridge.africa', 'Password123!', 'Zoia M.');
+<<<<<<< HEAD
+=======
       await walletClientService.getOrCreateWallet(result.user);
+>>>>>>> b4057178646f826080d12db3ea3f2e243cc63b13
       onSignUpSuccess(result.user);
     } catch (err) {
       setErrorMsg(err.message || 'Google sign-up failed.');
@@ -99,6 +106,16 @@ export default function SignUpPage({ onNavigate, onSignUpSuccess }) {
           </button>
         </div>
 
+<<<<<<< HEAD
+        {/* Bottom Hero Pitch matching VidPro */}
+        <div className="relative z-10 max-w-lg pb-4">
+          <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-white leading-[1.15] mb-4">
+            Edit Smarter. Export Faster.<br />
+            Create Anywhere.
+          </h1>
+          <p className="text-sm sm:text-base text-gray-300 leading-relaxed font-normal mb-8 max-w-md">
+            From quick social media transfers to full-length portfolio investing, our powerful platform lets you work seamlessly across borders.
+=======
         {/* Bottom Hero Pitch with true AssetBridge tagline from PDF */}
         <div className="relative z-10 max-w-lg pb-4">
           <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-white leading-[1.15] mb-4">
@@ -107,6 +124,7 @@ export default function SignUpPage({ onNavigate, onSignUpSuccess }) {
           </h1>
           <p className="text-sm sm:text-base text-gray-300 leading-relaxed font-normal mb-8 max-w-md">
             Trade global markets. Send money anywhere. One mobile wallet for peer-to-peer stablecoin payments, community savings pots, and live tokenised equities.
+>>>>>>> b4057178646f826080d12db3ea3f2e243cc63b13
           </p>
 
           {/* Carousel Dot Indicators */}
@@ -128,7 +146,11 @@ export default function SignUpPage({ onNavigate, onSignUpSuccess }) {
               Create an Account
             </h2>
             <p className="text-sm text-gray-500 font-normal">
+<<<<<<< HEAD
+              Sign up to start creating stunning videos with ease.
+=======
               Sign up to start sending and investing with ease.
+>>>>>>> b4057178646f826080d12db3ea3f2e243cc63b13
             </p>
           </div>
 
