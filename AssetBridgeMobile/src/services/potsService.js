@@ -45,7 +45,46 @@ class MobilePotsService {
   }
 
   getPots() {
-    return [...this.pots];
+    return [...this.pots].map((pot) => ({
+      ...pot,
+      contributionAmount: pot.contributionAmount ?? pot.contributionUsdt ?? pot.targetPerRoundUsdt,
+      totalPotSize: pot.totalPotSize ?? pot.targetPerRoundUsdt,
+    }));
+  }
+
+  async createPot({ name, contributionAmount, invitedMembers = [] }, creatorUserId = 'demo_user') {
+    const payload = { name, contributionAmount, invitedMembers, creatorUserId };
+    try {
+      const res = await fetch(`${API_BASE_URL}/pots`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (res.ok && json.data) {
+        this.pots.unshift(json.data);
+        return json.data;
+      }
+      if (!res.ok) throw new Error(json.message || 'The pot could not be created.');
+      throw new Error('The pot could not be created.');
+    } catch (error) {
+      if (error.message && !error.message.includes('Network') && !error.message.includes('fetch')) throw error;
+    }
+
+    const memberList = invitedMembers.map((member, index) => ({ id: `invite-${Date.now()}-${index}`, ...member, paid: false }));
+    const pot = {
+      id: `pot-${Date.now()}`,
+      name: name.trim(),
+      contributionAmount: Number(contributionAmount),
+      contributionUsdt: Number(contributionAmount),
+      targetPerRoundUsdt: Number(contributionAmount) * Math.max(memberList.length + 1, 1),
+      totalPotSize: Number(contributionAmount) * Math.max(memberList.length + 1, 1),
+      currentRound: 1,
+      totalRounds: Math.max(memberList.length + 1, 1),
+      members: [{ id: `owner-${Date.now()}`, name: 'You', paid: false, isUserSlot: true }, ...memberList],
+    };
+    this.pots.unshift(pot);
+    return pot;
   }
 
   async contribute({ potId, userId, amountUsdt }) {
@@ -63,7 +102,7 @@ class MobilePotsService {
 
     const pot = this.pots.find((p) => p.id === potId);
     if (pot) {
-      const userMember = pot.members.find((m) => m.name.includes('Nomsa') || m.name.includes('Lucas'));
+      const userMember = pot.members.find((m) => m.isUserSlot || m.id === 'm5' || m.id === '5');
       if (userMember) userMember.paid = true;
     }
 
@@ -74,6 +113,18 @@ class MobilePotsService {
       amountUsdt,
       timestamp: new Date().toISOString(),
     };
+  }
+
+  async contributeToPot(potId, userId = 'demo_user') {
+    const pot = this.pots.find((item) => item.id === potId);
+    const amountUsdt = pot?.contributionAmount ?? pot?.contributionUsdt ?? 20;
+    const result = await this.contribute({ potId, userId, amountUsdt });
+    if (pot) {
+      const member = pot.members.find((item) => item.isUserSlot || item.id === 'm5' || item.id === '5');
+      if (member) member.paid = true;
+    }
+    const pots = this.getPots();
+    return { ...(result || {}), pots, payoutEvent: result?.payoutEvent };
   }
 }
 
