@@ -189,85 +189,18 @@ class MobileWalletService {
         recipientAddress: '0x8ba1f109551bD432803012645Ac136ddd64DBA72',
         timestamp: new Date().toISOString(),
       },
+      {
+        id: 'tx-2',
+        txHash: '0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc7169d38820dfd117c3fa1f22',
+        type: 'stokvel_contribution',
+        amountUsdt: 20.0,
+        status: 'confirmed',
+        recipientAddress: '0x7169D38820dfd117C3FA1f22a697dBA58d90BA06',
+        timestamp: new Date(Date.now() - 3600000).toISOString(),
+      },
     ];
-  }
-
-  /**
-   * QVAC Natural Language Intent Parser (On-Device AI Engine)
-   * Interprets natural speech requests for Wally Assistant
-   */
-  parseQvacIntent(userInput = '') {
-    const text = userInput.trim();
-    const lower = text.toLowerCase();
-
-    // 1. Check Balance Intent
-    if (lower.includes('balance') || lower.includes('how much') || lower.includes('what do i have')) {
-      return {
-        action: 'check_balance',
-        confidence: 0.96,
-        summary: 'Check available Tether USDT balance and Sepolia reserve status.',
-      };
-    }
-
-    // 2. Extract numeric amount ($20, 20 usdt, 20.50, etc.)
-    const amountMatch = lower.match(/\$?\s*([0-9]+(?:\.[0-9]{1,2})?)\s*(?:usdt|dollars|\$)?/i);
-    const amount = amountMatch ? parseFloat(amountMatch[1]) : 20.0;
-
-    // 3. Stokvel Contribution Intent
-    if (lower.includes('stokvel') || lower.includes('chama') || lower.includes('pot') || lower.includes('vault')) {
-      return {
-        action: 'contribute_stokvel',
-        amount,
-        targetPot: 'Tech Queens Stokvel (Johannesburg)',
-        confidence: 0.94,
-        summary: `Contribute $${amount.toFixed(2)} USDT to your rotational savings pot.`,
-      };
-    }
-
-    // 4. Cross-border Remittance Intent
-    if (lower.includes('remit') || lower.includes('m-pesa') || lower.includes('mpesa') || lower.includes('kenya') || lower.includes('opay') || lower.includes('nigeria') || lower.includes('capitec')) {
-      return {
-        action: 'remit_mobile_money',
-        amount,
-        recipient: lower.includes('kenya') || lower.includes('mpesa') ? '+254 712 345 678 (Kenya M-Pesa)' : 'Mama Mary (Mobile Money)',
-        confidence: 0.92,
-        summary: `Remit $${amount.toFixed(2)} USDT via 0% FX mobile money payout.`,
-      };
-    }
-
-    // 5. Tokenized Stock / Forex Trade Intent
-    if (lower.includes('buy') || lower.includes('trade') || lower.includes('swap') || lower.includes('apple') || lower.includes('tsla') || lower.includes('tesla')) {
-      const symbol = lower.includes('apple') || lower.includes('aapl') ? 'tAAPL' : 'tTSLA';
-      return {
-        action: 'market_trade',
-        amount,
-        symbol,
-        confidence: 0.91,
-        summary: `Execute order: Swap $${amount.toFixed(2)} USDT for tokenized ${symbol}.`,
-      };
-    }
-
-    // 6. Default: Peer-to-Peer Send USDT to Family / Saved Recipient
-    let matchedRecipient = this.savedRecipients[0]; // default Thandi
-    for (const rec of this.savedRecipients) {
-      const firstName = rec.name.toLowerCase().split(' ')[0];
-      if (lower.includes(firstName) || (rec.name.toLowerCase().includes('kwame') && lower.includes('kwame')) || (rec.name.toLowerCase().includes('amina') && lower.includes('amina')) || (lower.includes('vendor') && rec.name.toLowerCase().includes('market'))) {
-        matchedRecipient = rec;
-        break;
-      }
-    }
-
-    return {
-      action: 'send_usdt',
-      amount,
-      recipientName: matchedRecipient.name,
-      recipientAddress: matchedRecipient.address,
-      recipientIdentifier: matchedRecipient.identifier,
-      note: 'Payment via Wally AI Assistant',
-      confidence: 0.95,
-      summary: `Send $${amount.toFixed(2)} USDT to ${matchedRecipient.name}.`,
-    };
   }
 }
 
 export const mobileWalletService = new MobileWalletService();
+

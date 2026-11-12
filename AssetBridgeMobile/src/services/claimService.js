@@ -61,19 +61,6 @@ class MobileClaimService {
     return newClaim;
   }
 
-  async getSenderClaims(userId) {
-    try {
-      const res = await fetch(`${API_BASE_URL}/claims/sender/${encodeURIComponent(userId)}`);
-      const data = await res.json();
-      if (res.ok && Array.isArray(data.data)) {
-        return data.data;
-      }
-    } catch {
-      // fallback
-    }
-    return [...this.localClaims];
-  }
-
   async refundClaimLink({ claimId, senderUserId }) {
     try {
       const res = await fetch(`${API_BASE_URL}/claims/${encodeURIComponent(claimId)}/refund`, {
@@ -92,7 +79,6 @@ class MobileClaimService {
     return { success: true, message: 'Funds returned to your wallet' };
   }
 
-  // Demo simulator for the 40-second hackathon presentation
   async simulateGogoClaim(claimId) {
     try {
       const res = await fetch(`${API_BASE_URL}/claims/${encodeURIComponent(claimId)}/claim`, {
