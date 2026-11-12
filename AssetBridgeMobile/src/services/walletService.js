@@ -85,6 +85,10 @@ class MobileWalletService {
     }
   }
 
+  async getWallet(userId = 'demo_user') {
+    return this.getOrCreateWallet(userId).catch(() => null);
+  }
+
   async getTransactions(userId) {
     try {
       const res = await fetch(`${API_BASE_URL}/wallet/${encodeURIComponent(userId)}/transactions`);
@@ -98,4 +102,6 @@ class MobileWalletService {
 }
 
 export const mobileWalletService = new MobileWalletService();
+export const walletService = mobileWalletService;
+
 
