@@ -247,7 +247,7 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Portfolio Assets</Text>
           <TouchableOpacity onPress={() => onNavigate('markets')}>
-            <Text style={styles.sectionLink}>Markets</Text>
+            <Text style={styles.sectionLink}>View Markets ⟶</Text>
           </TouchableOpacity>
         </View>
 
