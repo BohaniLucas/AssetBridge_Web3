@@ -37,31 +37,7 @@ export const authService = {
       localStorage.setItem(USER_SESSION_KEY, JSON.stringify(session));
       return { user: data.data.user, session, provider: 'backend_authoritative' };
     } catch (err) {
-      // Fallback only if backend offline
-      if (isSupabaseConfigured() && supabase) {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { data: { full_name: fullName, role: 'USER' } },
-        });
-        if (error) throw error;
-        return { user: data.user, session: data.session, provider: 'supabase' };
-      }
-
-      // Offline user creation
-      const mockUser = {
-        id: `usr_${Date.now()}`,
-        email,
-        fullName: fullName || email.split('@')[0],
-        role: 'USER',
-        created_at: new Date().toISOString(),
-      };
-      const session = {
-        user: mockUser,
-        token: `bearer_${Date.now()}_${btoa(email)}`,
-      };
-      localStorage.setItem(USER_SESSION_KEY, JSON.stringify(session));
-      return { user: mockUser, session, provider: 'local_offline' };
+      throw new Error(`Account creation failed. No local account was created. ${err.message}`);
     }
   },
 
@@ -98,34 +74,7 @@ export const authService = {
         throw err;
       }
 
-      // Offline fallback
-      if (isSupabaseConfigured() && supabase) {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        return { user: data.user, session: data.session, provider: 'supabase' };
-      }
-
-      const normalized = (email || '').toLowerCase();
-      const isAdmin = normalized.includes('admin') || normalized.includes('lucas') || normalized === 'malulekelucas04@gmail.com';
-
-      const mockUser = {
-        id: isAdmin ? 'usr_admin_001' : 'usr_test_002',
-        email: email || 'user@assetbridge.africa',
-        fullName: email.includes('@') ? email.split('@')[0] : (isAdmin ? 'System Administrator' : 'Standard User'),
-        role: isAdmin ? 'ADMIN' : 'USER',
-      };
-      const session = {
-        user: mockUser,
-        token: `bearer_${Date.now()}_${btoa(mockUser.email)}`,
-      };
-
-      if (isAdmin) {
-        localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session));
-      } else {
-        localStorage.setItem(USER_SESSION_KEY, JSON.stringify(session));
-      }
-
-      return { user: mockUser, session, provider: 'local_offline' };
+      throw new Error(`Sign-in failed. Local demo authentication is disabled. ${err.message}`);
     }
   },
 
@@ -198,10 +147,17 @@ export const authService = {
   },
 
   saveAdminSession(user, token = null) {
+    if (user?.role !== 'ADMIN') {
+      throw new Error('Only a server-authenticated administrator can create an admin session.');
+    }
     const existing = JSON.parse(localStorage.getItem(ADMIN_SESSION_KEY) || '{}');
+    const verifiedToken = token || existing.token;
+    if (!verifiedToken) {
+      throw new Error('Administrator session is missing its verified access token.');
+    }
     const session = {
-      user: { ...user, role: 'ADMIN' },
-      token: token || existing.token || `bearer_${Date.now()}_${btoa(user.email)}`,
+      user,
+      token: verifiedToken,
       authenticatedAt: new Date().toISOString(),
     };
     localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session));

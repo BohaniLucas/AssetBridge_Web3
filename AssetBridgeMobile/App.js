@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   SafeAreaView,
   StyleSheet,
@@ -10,49 +10,23 @@ import {
   Alert,
 } from 'react-native';
 import HomeScreen from './src/screens/HomeScreen';
-import RemittanceScreen from './src/screens/RemittanceScreen';
 import StokvelScreen from './src/screens/StokvelScreen';
 import MarketsScreen from './src/screens/MarketsScreen';
-import { mobileWalletService } from './src/services/walletService';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('wallet'); // 'wallet' | 'remittance' | 'stokvel' | 'markets'
-  const [wallet, setWallet] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const loadWallet = async () => {
-    try {
-      const w = await mobileWalletService.getWallet();
-      setWallet(w);
-    } catch {
-      // Fallback
-    }
-  };
-
-  useEffect(() => {
-    loadWallet();
-  }, []);
+  const wallet = null;
 
   const handleRefresh = async () => {
-    setRefreshing(true);
-    await loadWallet();
-    setRefreshing(false);
+    Alert.alert('Wallet unavailable', 'Sign in and connect a wallet before refreshing balances.');
   };
 
   const handleFaucet = async () => {
-    try {
-      const updated = await mobileWalletService.requestFaucet();
-      setWallet(updated);
-      Alert.alert('Faucet Credited', '+250.00 USDT added to your Sepolia wallet balance!');
-    } catch (err) {
-      Alert.alert('Faucet Failed', err.message || 'Error requesting testnet USDT');
-    }
+    Alert.alert('Faucet unavailable', 'Connect an authenticated wallet and configure a real testnet faucet before requesting tokens.');
   };
 
-  const handleTransfer = async ({ recipient, amount, note }) => {
-    const res = await mobileWalletService.transferUsdt({ recipient, amount, note });
-    await loadWallet();
-    return res;
+  const handleTransfer = async () => {
+    throw new Error('Payments are disabled until the mobile app has an authenticated WDK wallet and network-confirmed transaction flow. No payment was sent.');
   };
 
   const handleNavigate = (tabName) => {
@@ -87,9 +61,9 @@ export default function App() {
         </View>
 
         <View style={styles.userChip}>
-          <Text style={styles.userInitial}>M</Text>
+          <Text style={styles.userInitial}>?</Text>
           <Text style={styles.userEmail} numberOfLines={1}>
-            malulekelucas04@gmail.com
+            Not signed in
           </Text>
         </View>
       </View>
@@ -105,7 +79,12 @@ export default function App() {
             onNavigate={handleNavigate}
           />
         )}
-        {currentTab === 'remittance' && <RemittanceScreen />}
+        {currentTab === 'remittance' && (
+          <View style={styles.unavailableScreen}>
+            <Text style={styles.unavailableTitle}>Remittance unavailable</Text>
+            <Text style={styles.unavailableText}>Live FX rates and a verified payout provider are not connected. No remittance can be sent.</Text>
+          </View>
+        )}
         {currentTab === 'stokvel' && <StokvelScreen />}
         {currentTab === 'markets' && <MarketsScreen />}
       </View>
@@ -246,6 +225,23 @@ const styles = StyleSheet.create({
   screenContainer: {
     flex: 1,
     backgroundColor: '#F8FAFC',
+  },
+  unavailableScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  unavailableTitle: {
+    color: '#101936',
+    fontSize: 20,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  unavailableText: {
+    color: '#475569',
+    fontSize: 15,
+    textAlign: 'center',
   },
   tabBar: {
     flexDirection: 'row',

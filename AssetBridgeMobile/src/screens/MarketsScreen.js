@@ -7,11 +7,8 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
-  ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { marketService, TOKENS } from '../services/marketService';
-import { walletService } from '../services/walletService';
 
 const filterCategories = ['All', 'Equities', 'Currencies'];
 
@@ -20,29 +17,18 @@ export default function MarketsScreen() {
   const [selectedFilter, setSelectedFilter] = useState('All');
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [tradeAction, setTradeAction] = useState('buy'); // 'buy' or 'sell'
-  const [tradeAmount, setTradeAmount] = useState('50');
+  const [tradeAmount, setTradeAmount] = useState('');
   const [showTradeModal, setShowTradeModal] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
-  const [isExecuting, setIsExecuting] = useState(false);
-  const [wallet, setWallet] = useState(null);
-
-  const loadData = async () => {
-    try {
-      const [w, liveTokens] = await Promise.all([
-        walletService.getWallet(),
-        marketService.getLiveAssets(),
-      ]);
-      setWallet(w);
-      if (liveTokens && liveTokens.length > 0) {
-        setTokens(liveTokens);
-      }
-    } catch {
-      // Fallback
-    }
-  };
 
   useEffect(() => {
-    loadData();
+    let isActive = true;
+    Promise.all([marketService.getLiveAssets()])
+      .then(([liveTokens]) => {
+        if (isActive && liveTokens?.length) setTokens(liveTokens);
+      })
+      .catch(() => {});
+    return () => { isActive = false; };
   }, []);
 
   const filteredTokens = tokens.filter((t) => {
@@ -64,7 +50,7 @@ export default function MarketsScreen() {
   const handleOpenTrade = (asset, action = 'buy') => {
     setSelectedAsset(asset);
     setTradeAction(action);
-    setTradeAmount('50');
+    setTradeAmount('');
     setShowTradeModal(true);
   };
 
@@ -73,53 +59,16 @@ export default function MarketsScreen() {
     setShowInfoModal(true);
   };
 
-  const handleExecuteTrade = async () => {
-    if (numTradeAmount <= 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid amount.');
-      return;
-    }
-
-    if (tradeAction === 'buy' && wallet && wallet.balanceUsdt < numTradeAmount) {
-      Alert.alert('Insufficient Balance', `You have $${wallet.balanceUsdt.toFixed(2)} USDT available.`);
-      return;
-    }
-
-    setIsExecuting(true);
-    try {
-      if (tradeAction === 'buy') {
-        await walletService.transferUsdt({
-          recipient: `${activeAsset.symbol} Liquidity Pool`,
-          amount: numTradeAmount,
-        });
-      }
-
-      const updated = await walletService.getWallet();
-      setWallet(updated);
-      setShowTradeModal(false);
-
-      Alert.alert(
-        'Order Settled',
-        tradeAction === 'buy'
-          ? `Successfully purchased ${quote.tokensReceived.toFixed(4)} ${activeAsset.symbol} for $${numTradeAmount} USDT.`
-          : `Successfully sold ${numTradeAmount} ${activeAsset.symbol} for $${quote.netUsdt.toFixed(2)} USDT.`
-      );
-    } catch (err) {
-      Alert.alert('Trade Failed', err.message || 'Error executing order');
-    } finally {
-      setIsExecuting(false);
-    }
-  };
-
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
       {/* Hero Banner */}
       <View style={styles.heroBanner}>
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>FRACTIONAL ASSETS · ON-CHAIN LIQUIDITY</Text>
+          <Text style={styles.badgeText}>SAMPLE DATA · NOT LIVE OR TRADEABLE</Text>
         </View>
         <Text style={styles.heroTitle}>Global Markets & FX</Text>
         <Text style={styles.heroSub}>
-          Trade US equities and African currencies 24/7. Backed 1:1 by real custodial shares and reserve accounts, settled instantly in USDT.
+          Example market values only. This app has no verified tokenised equities, currency reserves, or trading settlement connected.
         </Text>
       </View>
 
@@ -264,17 +213,10 @@ export default function MarketsScreen() {
             </View>
 
             <TouchableOpacity
-              style={[styles.executeBtn, isExecuting && { opacity: 0.7 }]}
-              onPress={handleExecuteTrade}
-              disabled={isExecuting}
+              style={[styles.executeBtn, { opacity: 0.55 }]}
+              disabled
             >
-              {isExecuting ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.executeBtnText}>
-                  Confirm {tradeAction === 'buy' ? 'Purchase' : 'Sale'}
-                </Text>
-              )}
+              <Text style={styles.executeBtnText}>Trading unavailable</Text>
             </TouchableOpacity>
           </View>
         </View>

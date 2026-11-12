@@ -1,51 +1,13 @@
-import { API_BASE_URL, SEPOLIA_USDT_CONTRACT } from '../config/api';
+import { API_BASE_URL } from '../config/api';
 
 class MobileWalletService {
   constructor() {
     this.memoryCache = {};
     this.pendingIdempotencyKeys = new Set();
-    this.savedRecipients = [
-      {
-        id: 'rec-1',
-        name: 'Mama Thandi',
-        identifier: 'thandi@assetbridge.africa',
-        address: '0x8ba1f109551bD432803012645Ac136ddd64DBA72',
-        avatar: '👩‍🦱',
-        location: 'Johannesburg, ZA',
-        recentNote: 'Monthly family allowance',
-      },
-      {
-        id: 'rec-2',
-        name: 'Brother Kwame',
-        identifier: 'kwame@assetbridge.africa',
-        address: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
-        avatar: '👨‍🦱',
-        location: 'Nairobi, KE',
-        recentNote: 'School fees split',
-      },
-      {
-        id: 'rec-3',
-        name: 'Amina Bello',
-        identifier: 'amina@assetbridge.africa',
-        address: '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC',
-        avatar: '👧',
-        location: 'Lagos, NG',
-        recentNote: 'Groceries split',
-      },
-      {
-        id: 'rec-4',
-        name: 'Fresh Market Stall #4',
-        identifier: 'vendor@assetbridge.africa',
-        address: '0x90F79bf6EB2c4f870365E785982E1f101E93b906',
-        avatar: '🏪',
-        location: 'Kibera Market, KE',
-        recentNote: 'Vendor QR checkout',
-      },
-    ];
   }
 
   getSavedRecipients() {
-    return [...this.savedRecipients];
+    return [];
   }
 
   async getFeeQuote() {
@@ -53,25 +15,14 @@ class MobileWalletService {
       const res = await fetch(`${API_BASE_URL}/wallet/fee-quote`);
       const json = await res.json();
       if (res.ok && json.data) return json.data;
-    } catch {
-      // offline fallback
+      throw new Error(json.message || 'Fee quote request failed.');
+    } catch (error) {
+      throw new Error(`Unable to retrieve a live fee quote. Check your connection and retry. ${error.message}`);
     }
-
-    return {
-      network: 'Ethereum Sepolia (ChainID: 11155111)',
-      token: 'Tether USD (USDT)',
-      contractAddress: SEPOLIA_USDT_CONTRACT,
-      gasPriceGwei: 12.5,
-      estimatedGas: 65000,
-      feeUsdt: 0.2,
-      feeEth: 0.00018,
-      settlementTimeSeconds: 12,
-      idempotencySupported: true,
-      timestamp: new Date().toISOString(),
-    };
   }
 
-  async getOrCreateWallet(userId = 'malulekelucas04@gmail.com') {
+  async getOrCreateWallet(userId) {
+    if (!userId) throw new Error('Sign in to load your wallet.');
     try {
       const res = await fetch(`${API_BASE_URL}/wallet/${encodeURIComponent(userId)}`);
       const json = await res.json();
@@ -79,22 +30,12 @@ class MobileWalletService {
         this.memoryCache[userId] = json.data;
         return json.data;
       }
-    } catch {
-      // Backend offline fallback
+    } catch (error) {
+      throw new Error(`Unable to load your wallet. No local/demo balance is available. ${error.message}`);
     }
 
     if (this.memoryCache[userId]) return this.memoryCache[userId];
-
-    const fallbackWallet = {
-      userId,
-      address: '0x4f0b819D2E527B13D774925dfc477284600be09f',
-      balanceUsdt: 1000.0,
-      network: 'Ethereum Sepolia',
-      contractAddress: SEPOLIA_USDT_CONTRACT,
-      assetSymbol: 'USDT',
-    };
-    this.memoryCache[userId] = fallbackWallet;
-    return fallbackWallet;
+    throw new Error('Wallet service returned no wallet.');
   }
 
   generateIdempotencyKey() {
@@ -125,32 +66,8 @@ class MobileWalletService {
       }
       throw new Error(json.message || 'Transfer failed on backend');
     } catch (err) {
-      if (err.message && !err.message.includes('Network') && !err.message.includes('fetch')) {
-        throw err;
-      }
+      throw new Error(`Payment service unavailable or rejected the request. No local payment was recorded. ${err.message}`);
     }
-
-    // Offline simulation with idempotency safety
-    const wallet = await this.getOrCreateWallet(senderUserId);
-    if (wallet.balanceUsdt < numAmount + 0.2) {
-      throw new Error(`Insufficient funds. Required: $${(numAmount + 0.2).toFixed(2)} USDT ($0.20 fee), Available: $${wallet.balanceUsdt.toFixed(2)} USDT`);
-    }
-
-    wallet.balanceUsdt = Math.round((wallet.balanceUsdt - (numAmount + 0.2)) * 100) / 100;
-    const tx = {
-      id: `tx-${Date.now()}`,
-      txHash: `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`,
-      type: 'p2p_transfer',
-      amountUsdt: numAmount,
-      feeUsdt: 0.2,
-      senderUserId,
-      recipientAddress: recipientAddressOrUsername,
-      status: 'confirmed',
-      timestamp: new Date().toISOString(),
-      note,
-      idempotencyKey: key,
-    };
-    return { transaction: tx, senderWallet: wallet };
   }
 
   async claimFaucet(userId) {
@@ -162,13 +79,10 @@ class MobileWalletService {
       });
       const json = await res.json();
       if (res.ok && json.data) return json.data;
-    } catch {
-      // offline fallback
+      throw new Error(json.message || 'Faucet request failed.');
+    } catch (error) {
+      throw new Error(`Test token faucet unavailable. No balance was added. ${error.message}`);
     }
-
-    const wallet = await this.getOrCreateWallet(userId);
-    wallet.balanceUsdt = Math.round((wallet.balanceUsdt + 250) * 100) / 100;
-    return { wallet };
   }
 
   async getTransactions(userId) {
@@ -176,29 +90,10 @@ class MobileWalletService {
       const res = await fetch(`${API_BASE_URL}/wallet/${encodeURIComponent(userId)}/transactions`);
       const json = await res.json();
       if (res.ok && Array.isArray(json.data)) return json.data;
-    } catch {
-      // offline
+      throw new Error(json.message || 'Transaction history request failed.');
+    } catch (error) {
+      throw new Error(`Unable to load transaction history. ${error.message}`);
     }
-    return [
-      {
-        id: 'tx-1',
-        txHash: '0x8f2d59103e5c9a1b4d0812746bc3e2849f1a23847e908123456789abcdef0123',
-        type: 'p2p_transfer',
-        amountUsdt: 50.0,
-        status: 'confirmed',
-        recipientAddress: '0x8ba1f109551bD432803012645Ac136ddd64DBA72',
-        timestamp: new Date().toISOString(),
-      },
-      {
-        id: 'tx-2',
-        txHash: '0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc7169d38820dfd117c3fa1f22',
-        type: 'stokvel_contribution',
-        amountUsdt: 20.0,
-        status: 'confirmed',
-        recipientAddress: '0x7169D38820dfd117C3FA1f22a697dBA58d90BA06',
-        timestamp: new Date(Date.now() - 3600000).toISOString(),
-      },
-    ];
   }
 }
 

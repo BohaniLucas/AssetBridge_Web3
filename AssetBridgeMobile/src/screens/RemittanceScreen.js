@@ -87,9 +87,10 @@ export default function RemittanceScreen() {
         recipient: recipientNumber,
         amount: numAmount,
       });
+      if (!res?.txHash) throw new Error('Transfer service returned no verified transaction hash.');
 
       const newReceipt = {
-        txHash: res.txHash || '0x' + Math.random().toString(16).substring(2, 66),
+        txHash: res.txHash,
         amountUsdt: sendAmount,
         currencyCode: selectedCurrency,
         receivedFormatted: quote.assetBridge.receivedFormatted,

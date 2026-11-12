@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -31,9 +31,9 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
   const [lastReceipt, setLastReceipt] = useState(null);
 
   // Send to Gogo (WhatsApp Escrow Link)
-  const [claimZar, setClaimZar] = useState('400');
-  const [claimName, setClaimName] = useState('Gogo');
-  const [claimPhone, setClaimPhone] = useState('+27 82 555 0192');
+  const [claimZar, setClaimZar] = useState('');
+  const [claimName, setClaimName] = useState('');
+  const [claimPhone, setClaimPhone] = useState('');
   const [activeClaim, setActiveClaim] = useState(null);
   const [isCreatingClaim, setIsCreatingClaim] = useState(false);
   const [isSimulatingClaim, setIsSimulatingClaim] = useState(false);
@@ -42,8 +42,7 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
   const [copied, setCopied] = useState(false);
 
   const savedRecipients = mobileWalletService.getSavedRecipients();
-  const usdtBalance = wallet ? Number(wallet.balanceUsdt || 0) : 1000.0;
-  const portfolioTotalUsd = usdtBalance + 1.25 * 236.40 + 12950 / 129.50; // mirrors web dashboard
+  const usdtBalance = wallet ? Number(wallet.balanceUsdt || 0) : null;
 
   const handleCopy = () => {
     setCopied(true);
@@ -53,8 +52,8 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
   const openSendToRecipient = (rec) => {
     setRecipient(rec.identifier);
     setRecipientName(rec.name);
-    setAmount('25');
-    setNote(rec.recentNote || 'Family support');
+    setAmount('');
+    setNote('');
     setSendStep(1);
     setShowSendModal(true);
   };
@@ -70,8 +69,12 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
       setErrorMsg('Please enter a valid amount.');
       return;
     }
-    if (num + 0.2 > usdtBalance) {
-      setErrorMsg(`Insufficient balance. Required: $${(num + 0.2).toFixed(2)} USDT ($0.20 fee), Available: $${usdtBalance.toFixed(2)} USDT`);
+    if (!wallet) {
+      setErrorMsg('Sign in and connect your wallet to request a live balance and fee quote.');
+      return;
+    }
+    if (usdtBalance === null) {
+      setErrorMsg('A live network balance is unavailable. No payment can be prepared.');
       return;
     }
     setSendStep(2);
@@ -86,12 +89,14 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
         amount: num,
         note,
       });
+      const txHash = result?.transaction?.txHash;
+      if (!txHash) throw new Error('Payment service returned no transaction hash. No receipt can be shown.');
 
       const receipt = {
         amount: num,
         recipient: recipientName || recipient,
-        feeUsdt: 0.2,
-        txHash: result?.transaction?.txHash || `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`,
+        feeUsdt: result.transaction.feeUsdt,
+        txHash,
         timestamp: new Date().toLocaleTimeString(),
       };
 
@@ -111,15 +116,9 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
     const numUsdt = Math.round((numZar / 20.0) * 100) / 100;
 
     try {
-      await onTransfer({
-        recipient: '0x7169D38820dfd117C3FA1f22a697dBA58d90BA06',
-        amount: numUsdt,
-        note: `Escrow claim contract: R${numZar} to ${claimName}`,
-      });
-
       const claim = await mobileClaimService.createClaimLink({
-        senderUserId: wallet?.userId || 'malulekelucas04@gmail.com',
-        senderName: 'Nomsa (Lucas)',
+        senderUserId: wallet?.userId,
+        senderName: wallet?.ownerName,
         amountZar: numZar,
         amountUsdt: numUsdt,
         recipientName: claimName,
@@ -147,16 +146,13 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
   const handleSimulateClaim = async () => {
     if (!activeClaim) return;
     setIsSimulatingClaim(true);
-    setTimeout(async () => {
-      const res = await mobileClaimService.simulateGogoClaim(activeClaim.id);
-      setActiveClaim((prev) => ({
-        ...prev,
-        status: 'claimed',
-        claimedTxHash: res.claimedTxHash,
-        claimedAt: new Date().toLocaleTimeString(),
-      }));
+    try {
+      await mobileClaimService.simulateGogoClaim(activeClaim.id);
+    } catch (err) {
+      Alert.alert('Claim unavailable', err.message);
+    } finally {
       setIsSimulatingClaim(false);
-    }, 1500);
+    }
   };
 
   const handleRefundClaim = async () => {
@@ -164,9 +160,8 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
     try {
       await mobileClaimService.refundClaimLink({
         claimId: activeClaim.id,
-        senderUserId: wallet?.userId || 'malulekelucas04@gmail.com',
+        senderUserId: wallet?.userId,
       });
-      await onFaucet();
       setActiveClaim((prev) => ({ ...prev, status: 'refunded' }));
       Alert.alert('Refund Complete', `R${activeClaim.amountZar} ($${activeClaim.amountUsdt} USDT) refunded to your balance.`);
     } catch (err) {
@@ -179,7 +174,7 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
       {/* 1. LUXURIOUS PORTFOLIO CARD (Matches Web Dashboard) */}
       <View style={styles.portfolioCard}>
         <View style={styles.portfolioHeader}>
-          <Text style={styles.portfolioLabel}>TETHER PORTFOLIO BALANCE</Text>
+          <Text style={styles.portfolioLabel}>TESTNET WALLET STATUS</Text>
           <View style={styles.sepoliaBadge}>
             <View style={styles.sepoliaDot} />
             <Text style={styles.sepoliaText}>SEPOLIA EVM</Text>
@@ -188,12 +183,7 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
 
         {/* Balance & 24h Change */}
         <View style={styles.balanceRow}>
-          <Text style={styles.balanceAmount}>
-            ${portfolioTotalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </Text>
-          <View style={styles.changePill}>
-            <Text style={styles.changeText}>+1.82%</Text>
-          </View>
+          <Text style={styles.balanceAmount}>{usdtBalance === null ? 'Balance unavailable' : `$${usdtBalance.toFixed(2)}`}</Text>
         </View>
 
         {/* Truncated Sepolia Address & Faucet */}
@@ -201,32 +191,17 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
           <TouchableOpacity style={styles.addressBox} onPress={handleCopy}>
             <Text style={styles.addressLabel}>Tether Addr: </Text>
             <Text style={styles.addressValue} numberOfLines={1}>
-              {wallet?.address ? `${wallet.address.slice(0, 8)}...${wallet.address.slice(-6)}` : '0x4f0b...e09f'}
+              {wallet?.address ? `${wallet.address.slice(0, 8)}...${wallet.address.slice(-6)}` : 'Wallet not connected'}
             </Text>
             <Text style={styles.copyIcon}>{copied ? '✓' : '📋'}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.faucetBtn} onPress={onFaucet}>
-            <Text style={styles.faucetBtnText}>+250 USDT</Text>
+            <Text style={styles.faucetBtnText}>Faucet unavailable</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Performance Trend Line Simulation */}
-        <View style={styles.trendContainer}>
-          <View style={styles.trendLineHeader}>
-            <Text style={styles.trendLabel}>Portfolio Performance Trend</Text>
-            <Text style={styles.trendSub}>Live On-Chain Value</Text>
-          </View>
-          <View style={styles.trendBarTrack}>
-            <View style={[styles.trendBarFill, { width: '82%' }]} />
-          </View>
-        </View>
-
-        {/* Bottom Card Footer */}
-        <View style={styles.portfolioFooter}>
-          <Text style={styles.footerAssetsText}>📦 3 assets held · 24/7 liquidity</Text>
-          <Text style={styles.footerSettlementText}>⚡ Tether Instant</Text>
-        </View>
+        <Text style={styles.footerSettlementText}>Test network balances are shown only when fetched from the connected wallet.</Text>
       </View>
 
       {/* 2. QUICK ACTIONS (2x2 Grid Matching Web Pastel Colors) */}
@@ -243,7 +218,7 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
             <Text style={{ fontSize: 20 }}>↑</Text>
           </View>
           <Text style={[styles.quickTitle, { color: '#065F46' }]}>Send USDT</Text>
-          <Text style={styles.quickSub}>P2P On-Chain</Text>
+          <Text style={styles.quickSub}>Connect wallet to enable</Text>
         </TouchableOpacity>
 
         {/* Action 2: Receive QR (Blue) */}
@@ -282,7 +257,7 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
             <Text style={{ fontSize: 20 }}>🌍</Text>
           </View>
           <Text style={[styles.quickTitle, { color: '#6B21A8' }]}>Send Home</Text>
-          <Text style={styles.quickSub}>0% FX Remit</Text>
+          <Text style={styles.quickSub}>Not connected</Text>
         </TouchableOpacity>
       </View>
 
@@ -317,46 +292,7 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
           </TouchableOpacity>
         </View>
 
-        <View style={styles.assetsGrid}>
-          {/* Asset 1: Tether USD */}
-          <View style={[styles.assetCard, { backgroundColor: '#ECFDF5', borderColor: '#D1FAE5' }]}>
-            <View style={styles.assetHeader}>
-              <View style={[styles.assetIconBox, { backgroundColor: '#A7F3D0' }]}>
-                <Text style={{ fontSize: 18, color: '#047857', fontWeight: '900' }}>$</Text>
-              </View>
-              <Text style={[styles.assetTypeBadge, { color: '#047857', backgroundColor: '#D1FAE5' }]}>Tether Stablecoin</Text>
-            </View>
-            <Text style={styles.assetName}>Tether USD (tUSDT)</Text>
-            <Text style={styles.assetAmount}>${usdtBalance.toFixed(2)}</Text>
-            <Text style={styles.assetSub}>Settlement asset · Sepolia EVM</Text>
-          </View>
-
-          {/* Asset 2: Apple Tokenized Equity */}
-          <View style={[styles.assetCard, { backgroundColor: '#F0F5FF', borderColor: '#E0E7FF' }]}>
-            <View style={styles.assetHeader}>
-              <View style={[styles.assetIconBox, { backgroundColor: '#C7D2FE' }]}>
-                <Text style={{ fontSize: 18, color: '#3730A3', fontWeight: '900' }}></Text>
-              </View>
-              <Text style={[styles.assetTypeBadge, { color: '#3730A3', backgroundColor: '#E0E7FF' }]}>Tokenised Equity</Text>
-            </View>
-            <Text style={styles.assetName}>Apple Inc. (tAAPL)</Text>
-            <Text style={styles.assetAmount}>1.25 shares</Text>
-            <Text style={styles.assetSub}>$295.50 USD · +1.82% today</Text>
-          </View>
-
-          {/* Asset 3: Kenyan Shilling FX */}
-          <View style={[styles.assetCard, { backgroundColor: '#FFFBEB', borderColor: '#FEF3C7' }]}>
-            <View style={styles.assetHeader}>
-              <View style={[styles.assetIconBox, { backgroundColor: '#FDE68A' }]}>
-                <Text style={{ fontSize: 18, color: '#92400E', fontWeight: '900' }}>K</Text>
-              </View>
-              <Text style={[styles.assetTypeBadge, { color: '#92400E', backgroundColor: '#FEF3C7' }]}>Tokenised Currency</Text>
-            </View>
-            <Text style={styles.assetName}>Kenyan Shilling (tKES)</Text>
-            <Text style={styles.assetAmount}>12,950 KES</Text>
-            <Text style={styles.assetSub}>$100.00 USD · 0% FX spread</Text>
-          </View>
-        </View>
+        <Text style={styles.activityDetail}>Only verified assets from the connected wallet will appear here.</Text>
       </View>
 
       {/* 5. RECENT ACTIVITY LEDGER */}
@@ -368,27 +304,7 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
           </TouchableOpacity>
         </View>
 
-        <View style={styles.activityCard}>
-          <View style={styles.activityIconBox}>
-            <Text style={{ fontSize: 18 }}>⚡</Text>
-          </View>
-          <View style={styles.activityInfo}>
-            <Text style={styles.activityTitle}>P2P Transfer to Mama Thandi</Text>
-            <Text style={styles.activityDetail}>Confirmed on Sepolia · Idempotent</Text>
-          </View>
-          <Text style={styles.activityAmount}>-$25.00 USDT</Text>
-        </View>
-
-        <View style={styles.activityCard}>
-          <View style={[styles.activityIconBox, { backgroundColor: '#E0F2FE' }]}>
-            <Text style={{ fontSize: 18, color: '#0369A1' }}>👥</Text>
-          </View>
-          <View style={styles.activityInfo}>
-            <Text style={styles.activityTitle}>Tech Queens Stokvel Contribution</Text>
-            <Text style={styles.activityDetail}>Round #4 Vault Deposit</Text>
-          </View>
-          <Text style={styles.activityAmount}>-$20.00 USDT</Text>
-        </View>
+        <Text style={styles.activityDetail}>No verified transaction history is connected.</Text>
       </View>
 
       {/* MODAL 1: SEND USDT (VICTOR'S 5-STEP PAYMENT FLOW) */}
@@ -447,7 +363,7 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
               <>
                 <Text style={styles.stepBadge}>STEP 3 OF 5: REVIEW & APPROVAL</Text>
                 <Text style={styles.modalTitle}>Confirm Tether Transaction</Text>
-                <Text style={styles.modalSub}>Verify recipient and fee quote before signing.</Text>
+                <Text style={styles.modalSub}>A live network fee quote is not connected. Payment approval is unavailable.</Text>
 
                 <View style={styles.reviewCard}>
                   <View style={styles.reviewRow}>
@@ -464,11 +380,11 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
                   </View>
                   <View style={styles.reviewRow}>
                     <Text style={styles.reviewKey}>Network Gas Fee</Text>
-                    <Text style={styles.reviewVal}>$0.20 USDT (~0.00018 ETH)</Text>
+                    <Text style={styles.reviewVal}>Unavailable</Text>
                   </View>
                   <View style={[styles.reviewRow, { borderBottomWidth: 0, paddingTop: 10 }]}>
                     <Text style={[styles.reviewKey, { fontWeight: '800', color: '#0F172A' }]}>Total Required</Text>
-                    <Text style={[styles.reviewVal, { fontSize: 16, fontWeight: '900', color: '#0F172A' }]}>${(Number(amount) + 0.2).toFixed(2)} USDT</Text>
+                    <Text style={[styles.reviewVal, { fontSize: 16, fontWeight: '900', color: '#0F172A' }]}>Unavailable</Text>
                   </View>
                 </View>
 
@@ -485,8 +401,8 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
 
             {sendStep === 3 && lastReceipt && (
               <>
-                <Text style={styles.stepBadge}>STEP 5 OF 5: TRANSACTION CONFIRMED</Text>
-                <Text style={styles.modalTitle}>✅ Payment Confirmed!</Text>
+                <Text style={styles.stepBadge}>TRANSACTION SUBMITTED</Text>
+                <Text style={styles.modalTitle}>⏳ Payment Pending</Text>
                 <Text style={styles.modalSub}>Settled on Ethereum Sepolia Testnet</Text>
 
                 <View style={styles.receiptBox}>
@@ -633,7 +549,7 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
                       {isSimulatingClaim ? (
                         <ActivityIndicator color="#78350F" size="small" />
                       ) : (
-                        <Text style={styles.btnSimulateText}>👵 Simulate Gogo's Phone Claim (Demo)</Text>
+                        <Text style={styles.btnSimulateText}>Claim flow unavailable</Text>
                       )}
                     </TouchableOpacity>
                   )}

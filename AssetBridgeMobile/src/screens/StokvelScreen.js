@@ -11,53 +11,44 @@ import {
   Alert,
 } from 'react-native';
 import { potsService } from '../services/potsService';
-import { walletService } from '../services/walletService';
 
 export default function StokvelScreen() {
   const [pots, setPots] = useState([]);
-  const [activePotId, setActivePotId] = useState('friends-stokvel');
+  const [activePotId, setActivePotId] = useState(null);
   const [isContributing, setIsContributing] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showPayoutModal, setShowPayoutModal] = useState(false);
   const [payoutWinner, setPayoutWinner] = useState('');
   const [newPotName, setNewPotName] = useState('');
-  const [newPotAmount, setNewPotAmount] = useState('20');
+  const [newPotAmount, setNewPotAmount] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
 
-  const loadPots = async () => {
-    try {
-      const data = await potsService.getPots();
-      setPots(data);
-      if (data.length > 0 && !data.some((p) => p.id === activePotId)) {
-        setActivePotId(data[0].id);
-      }
-    } catch {
-      // Keep state
-    }
-  };
-
   useEffect(() => {
-    loadPots();
+    let isActive = true;
+    Promise.resolve(potsService.getPots())
+      .then((data) => { if (isActive) setPots(data); })
+      .catch(() => {});
+    return () => { isActive = false; };
   }, []);
 
   const activePot = pots.find((p) => p.id === activePotId) || pots[0] || {
-    id: 'friends-stokvel',
-    name: 'Friends Stokvel',
+    id: null,
+    name: 'No stokvel connected',
     mode: 'rotation',
-    contributionAmount: 20,
-    totalPotSize: 100,
-    totalRounds: 5,
-    currentRound: 1,
+    contributionAmount: 0,
+    totalPotSize: 0,
+    totalRounds: 0,
+    currentRound: 0,
     members: [],
-    inviteCode: 'POT-STOK-1001',
+    inviteCode: null,
   };
 
   const paidCount = activePot.members?.filter((m) => m.paid)?.length || 0;
-  const totalMembers = activePot.members?.length || 1;
-  const progressPercent = Math.round((paidCount / totalMembers) * 100);
+  const totalMembers = activePot.members?.length || 0;
+  const progressPercent = totalMembers ? Math.round((paidCount / totalMembers) * 100) : 0;
 
-  const userMember = activePot.members?.find((m) => m.isUserSlot || m.id === '5' || m.id === 'm5');
+  const userMember = null;
   const hasUserContributed = Boolean(userMember?.paid);
 
   const handleContribute = async () => {
@@ -111,7 +102,7 @@ export default function StokvelScreen() {
         </View>
         <Text style={styles.heroTitle}>Rotating Group Savings</Text>
         <Text style={styles.heroSub}>
-          Save together with trusted family and circle members. Smart contracts automatically collect contributions and disburse payouts.
+          Stokvel screens are prepared, but a verified group vault is not connected yet. Contributions and payouts are disabled.
         </Text>
       </View>
 
@@ -195,7 +186,7 @@ export default function StokvelScreen() {
           {isContributing ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : hasUserContributed ? (
-            <Text style={styles.contributeBtnText}>✓ You've Contributed to Round {activePot.currentRound}</Text>
+            <Text style={styles.contributeBtnText}>✓ Contribution recorded for Round {activePot.currentRound}</Text>
           ) : (
             <Text style={styles.contributeBtnText}>
               Contribute ${activePot.contributionAmount} USDT to Round {activePot.currentRound}
@@ -256,7 +247,7 @@ export default function StokvelScreen() {
         <Text style={styles.infoTitle}>How Rotating Stokvels Work</Text>
         <Text style={styles.infoText}>
           1. Every member contributes a fixed amount (e.g. $20 USDT) each round.{'\n'}
-          2. The full pot (${activePot.totalPotSize} USDT) automatically pays out to that round's recipient.{'\n'}
+          2. The full pot (${activePot.totalPotSize} USDT) would pay out to that round&apos;s recipient when a verified vault is available.{'\n'}
           3. Payout cycles through every member until the circle completes, fully audited by smart contract.
         </Text>
       </View>
@@ -269,7 +260,7 @@ export default function StokvelScreen() {
             <Text style={styles.modalSub}>Share this private circle code with friends or family</Text>
 
             <View style={styles.codeBox}>
-              <Text style={styles.codeText}>{activePot.inviteCode || 'POT-STOK-1001'}</Text>
+          <Text style={styles.codeText}>{activePot.inviteCode || 'No invite code available'}</Text>
             </View>
 
             <TouchableOpacity

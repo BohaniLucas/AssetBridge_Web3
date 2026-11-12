@@ -1,5 +1,3 @@
-import { API_BASE_URL } from '../config/api';
-
 class MobileRemittanceService {
   constructor() {
     this.destinations = [
@@ -75,38 +73,8 @@ class MobileRemittanceService {
     };
   }
 
-  async sendRemittance({ senderUserId, amountUsdt, destinationId, recipientPhone, recipientName }) {
-    try {
-      const res = await fetch(`${API_BASE_URL}/remittance/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          senderUserId,
-          amountUsdt: Number(amountUsdt),
-          destinationId,
-          recipientPhone,
-          recipientName,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.data) return data.data;
-    } catch {
-      // offline fallback
-    }
-
-    const quote = this.calculateQuote(amountUsdt, destinationId);
-    return {
-      id: `remit-${Date.now()}`,
-      txHash: `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`,
-      status: 'confirmed',
-      amountUsdt: Number(amountUsdt),
-      localReceived: quote.localReceived,
-      currency: quote.destination.currency,
-      provider: quote.destination.defaultProvider,
-      recipientPhone,
-      recipientName,
-      timestamp: new Date().toISOString(),
-    };
+  async sendRemittance() {
+    throw new Error('Remittance is disabled until a live rate source, payout provider, and network-verified settlement flow are integrated. No payment was submitted.');
   }
 }
 
