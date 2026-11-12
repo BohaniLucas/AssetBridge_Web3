@@ -184,9 +184,9 @@ export default function StokvelScreen({ onNavigate }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F4F7FA' },
+  container: { flex: 1, backgroundColor: '#F1F4F8' },
   contentContainer: { padding: 16, paddingBottom: 40 },
-  shadowSm: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 12, elevation: 2 },
+  shadowSm: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.07, shadowRadius: 14, elevation: 3 },
   
   heroBanner: { backgroundColor: '#0F172A', borderRadius: 24, padding: 24, marginBottom: 24, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 6 },
   heroTitle: { color: '#FFFFFF', fontSize: 22, fontWeight: '800', marginBottom: 8, letterSpacing: -0.5 },
@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
   potPillTextActive: { color: '#0F172A' },
 
   /* --- POT CARD --- */
-  potCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: '#F1F5F9' },
+  potCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: '#E8EDF3' },
   potCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
   potName: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 4 },
   potType: { fontSize: 13, color: '#64748B', fontWeight: '500' },

@@ -105,7 +105,7 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F4F7FA" />
+      <StatusBar barStyle="dark-content" backgroundColor="#F1F4F8" />
 
       {/* --- MINIMALIST TOP NAV --- */}
       <View style={styles.topNav}>
@@ -174,7 +174,7 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F4F7FA', // Full background color bleed
+    backgroundColor: '#F1F4F8', // Soft cool gray keeps white surfaces distinct
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
 
@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 24,
     paddingVertical: 16,
-    backgroundColor: '#F4F7FA',
+    backgroundColor: '#F1F4F8',
   },
   brandGroup: {
     flexDirection: 'row',
@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
   /* --- BODY --- */
   screenContainer: {
     flex: 1,
-    backgroundColor: '#F4F7FA',
+    backgroundColor: '#F1F4F8',
   },
 
   /* --- FLUID BOTTOM NAV --- */

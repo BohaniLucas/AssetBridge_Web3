@@ -169,7 +169,7 @@ export default function CreatePotScreen({ onBack, onSave }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F4F7FA' },
+  container: { flex: 1, backgroundColor: '#F1F4F8' },
   
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 60, paddingBottom: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC', borderRadius: 12 },
@@ -178,7 +178,7 @@ const styles = StyleSheet.create({
   scrollArea: { flex: 1 },
   scrollContent: { padding: 16 },
 
-  sectionCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: '#F1F5F9', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 10, elevation: 2 },
+  sectionCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: '#E8EDF3', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.06, shadowRadius: 14, elevation: 3 },
   sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
   stepBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center' },
   stepBadgeText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },

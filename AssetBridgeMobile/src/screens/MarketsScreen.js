@@ -326,7 +326,7 @@ export default function MarketsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F1F4F8',
   },
   contentContainer: {
     padding: 16,

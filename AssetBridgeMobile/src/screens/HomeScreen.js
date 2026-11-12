@@ -345,15 +345,15 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
 
 const styles = StyleSheet.create({
   /* --- GLOBALS & LAYOUT --- */
-  container: { flex: 1, backgroundColor: '#F4F7FA' },
+  container: { flex: 1, backgroundColor: '#F1F4F8' },
   content: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 40 },
   
   shadowSm: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 2,
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
+    elevation: 3,
   },
 
   /* --- 1. PREMIUM PORTFOLIO CARD --- */
@@ -444,7 +444,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
   sectionLink: { fontSize: 14, fontWeight: '700', color: '#3B82F6' },
   
-  assetListContainer: { backgroundColor: '#FFFFFF', borderRadius: 24, paddingHorizontal: 16, ...Platform.select({ ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 10 }, android: { elevation: 2 } }) },
+  assetListContainer: { backgroundColor: '#FFFFFF', borderRadius: 24, paddingHorizontal: 16, borderWidth: 1, borderColor: '#E8EDF3', ...Platform.select({ ios: { shadowColor: '#1E293B', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.06, shadowRadius: 14 }, android: { elevation: 3 } }) },
   assetRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
   assetRowIcon: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   assetRowInfo: { flex: 1 },
@@ -456,7 +456,7 @@ const styles = StyleSheet.create({
 
   /* --- 4. TRANSACTIONS --- */
   refreshBtn: { backgroundColor: '#F1F5F9', padding: 8, borderRadius: 10 },
-  transactionContainer: { backgroundColor: '#FFFFFF', borderRadius: 24, paddingHorizontal: 16, paddingVertical: 8 },
+  transactionContainer: { backgroundColor: '#FFFFFF', borderRadius: 24, paddingHorizontal: 16, paddingVertical: 8, borderWidth: 1, borderColor: '#E8EDF3', ...Platform.select({ ios: { shadowColor: '#1E293B', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.06, shadowRadius: 14 }, android: { elevation: 3 } }) },
   transactionItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
   txIconBox: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   txInfo: { flex: 1 },
