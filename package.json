@@ -1,0 +1,13 @@
+{
+  "name": "webassetbridge-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "npm --prefix AssetBridgeMobile start",
+    "mobile": "npm --prefix AssetBridgeMobile start",
+    "mobile:clean": "npm --prefix AssetBridgeMobile start -- -c",
+    "web": "npm --prefix AssetBridge run dev",
+    "server": "npm --prefix server run dev"
+  }
+}
+
