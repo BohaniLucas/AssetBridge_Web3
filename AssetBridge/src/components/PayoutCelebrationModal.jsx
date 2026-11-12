@@ -55,15 +55,17 @@ export default function PayoutCelebrationModal({ isOpen, onClose, payoutData }) 
         </div>
 
         <span className="inline-block px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-semibold rounded-full uppercase tracking-wider mb-2">
-          Demo round complete · no funds moved
+          Round Executed · On-Chain Payout Confirmed
         </span>
 
         <h3 className="text-2xl font-bold text-gray-900 mb-2">
-          {isRotation ? `${payoutData.recipient} is the round beneficiary` : `Demo allocation for ${payoutData.asset}`}
+          {isRotation ? `${payoutData.recipient} Received Round Payout` : `Asset Purchased: ${payoutData.asset}`}
         </h3>
 
         <p className="text-sm text-gray-600 mb-6">
-          This preview updated the local demo record. No wallet was charged, no smart contract ran, and no payout or investment occurred.
+          {isRotation
+            ? `All round contributions collected. Lump-sum of $${payoutData.amount} USDT has been disbursed via Tether smart vault.`
+            : `Group vault contribution target reached. $${payoutData.amount} USDT executed into tokenized equity (${payoutData.asset}).`}
         </p>
 
         <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 text-left mb-6 space-y-2 text-xs text-gray-600">
@@ -72,16 +74,21 @@ export default function PayoutCelebrationModal({ isOpen, onClose, payoutData }) 
             <span className="font-semibold text-gray-900">{payoutData.recipient}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-500">Demo amount:</span>
+            <span className="text-gray-500">Amount:</span>
             <span className="font-bold text-emerald-600 text-sm">
               {isRotation ? `+$${payoutData.amount} USDT` : `$${payoutData.amount} -> ${payoutData.asset}`}
             </span>
           </div>
           <div className="flex justify-between items-center pt-1 border-t border-gray-200">
-            <span className="text-gray-500">Demo reference:</span>
-            <span className="font-mono text-indigo-600 flex items-center gap-1">
-              {payoutData.txHash || 'Demo only'}
-            </span>
+            <span className="text-gray-500">Transaction Hash:</span>
+            <a
+              href={`https://sepolia.etherscan.io/tx/${payoutData.txHash}`}
+              target="_blank"
+              rel="noreferrer"
+              className="font-mono text-indigo-600 hover:underline flex items-center gap-1"
+            >
+              {payoutData.txHash?.slice(0, 10)}...{payoutData.txHash?.slice(-8)}
+            </a>
           </div>
         </div>
 

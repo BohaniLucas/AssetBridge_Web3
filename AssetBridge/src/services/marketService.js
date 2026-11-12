@@ -1,5 +1,7 @@
 import { TOKENS } from '../utils/constants';
 
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
 class MarketService {
   constructor() {
     this.cachedTokens = [...TOKENS];
@@ -11,14 +13,12 @@ class MarketService {
    */
   async getLiveAssets() {
     const now = Date.now();
-    // Cache for 15 seconds to avoid spamming
     if (now - this.lastFetched < 15000 && this.cachedTokens.length > 0) {
       return this.cachedTokens;
     }
 
     try {
-      // 1. Try fetching from AssetBridge backend API
-      const res = await fetch('http://localhost:5000/api/market/all');
+      const res = await fetch(`${API_BASE}/market/all`);
       if (res.ok) {
         const json = await res.json();
         if (json.data) {
@@ -28,7 +28,6 @@ class MarketService {
         }
       }
     } catch {
-      // Backend not running, try direct public API calls
       await this.fetchDirectPublicFeeds();
     }
 
@@ -36,16 +35,10 @@ class MarketService {
     return this.cachedTokens;
   }
 
-  /**
-   * Synchronous accessor for UI components
-   */
   getAssets() {
     return this.cachedTokens;
   }
 
-  /**
-   * Direct fallback to open.er-api.com and Binance public APIs
-   */
   async fetchDirectPublicFeeds() {
     try {
       const [fxRes, cryptoRes] = await Promise.allSettled([
@@ -77,7 +70,6 @@ class MarketService {
 
   mergeMarketData({ forex, equities, crypto }) {
     this.cachedTokens = this.cachedTokens.map((token) => {
-      // Update Equities from Finnhub
       if (equities && Array.isArray(equities)) {
         const eqMatch = equities.find((e) => e.symbol === token.symbol);
         if (eqMatch) {
@@ -89,7 +81,6 @@ class MarketService {
         }
       }
 
-      // Update Currencies from open.er-api.com
       if (forex?.rates) {
         if (token.symbol === 'tKES' && forex.rates.KES) {
           return { ...token, price: 1 / forex.rates.KES, fxRatePerUsd: forex.rates.KES };
@@ -106,14 +97,54 @@ class MarketService {
     });
   }
 
-  /**
-   * Generates a signed cryptographic quote for an order
-   */
+  async getQuote({ symbol, action, amountUsdt, tokenAmount }) {
+    try {
+      const res = await fetch(`${API_BASE}/market/quote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol, action, amountUsdt, tokenAmount }),
+      });
+      const json = await res.json();
+      if (res.ok && json.data) return json.data;
+    } catch {
+      // offline fallback
+    }
+
+    const asset = this.cachedTokens.find((t) => t.symbol === symbol) || this.cachedTokens[1];
+    const basePrice = asset.price;
+    const effectivePrice = action === 'buy' ? basePrice * 1.0015 : basePrice * 0.9985;
+    return {
+      quoteId: `quote_${Date.now()}`,
+      symbol,
+      action,
+      basePrice,
+      effectivePrice,
+      spreadPercent: 0.15,
+      expiresAt: Date.now() + 30000,
+    };
+  }
+
+  async executeTrade({ userId, quoteId, symbol, action, amountUsdt }) {
+    try {
+      const res = await fetch(`${API_BASE}/market/trade`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, quoteId, symbol, action, amountUsdt }),
+      });
+      const json = await res.json();
+      if (res.ok && json.data) return json.data;
+      if (!res.ok) throw new Error(json.message || 'Trade execution failed.');
+    } catch (err) {
+      if (err.message && !err.message.includes('fetch')) throw err;
+    }
+    return null;
+  }
+
   getSignedQuote(symbol) {
     const asset = this.cachedTokens.find((t) => t.symbol === symbol) || this.cachedTokens[1];
     const timestamp = Date.now();
-    const expiresAt = timestamp + 15000;
-    const spread = 0.0015; // 15 bps
+    const expiresAt = timestamp + 30000;
+    const spread = 0.0015;
     const executionPrice = Number((asset.price * (1 + spread)).toFixed(4));
 
     return {
@@ -123,8 +154,7 @@ class MarketService {
       spreadPercent: '0.15%',
       timestamp,
       expiresAt,
-      signature: '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join(''),
-      secondsRemaining: 15,
+      secondsRemaining: 30,
     };
   }
 }

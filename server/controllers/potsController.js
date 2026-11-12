@@ -25,45 +25,45 @@ export const getPot = (req, res) => {
 
 export const createPot = (req, res) => {
   try {
-    const { name, mode, contributionAmount, frequency, description, members } = req.body;
-    if (!name) {
-      return errorResponse(res, 'Pot name is required', 400);
-    }
-    const newPot = potService.createPot({ name, mode, contributionAmount, frequency, description, members });
+    const creatorUserId = req.user?.id || req.user?.email || req.body.creatorUserId || 'demo_user';
+    const newPot = potService.createPot(req.body, creatorUserId);
     return successResponse(res, newPot, 'Stokvel pot created successfully', 201);
   } catch (err) {
-    return errorResponse(res, err.message, 500);
+    return errorResponse(res, err.message, 400);
   }
 };
 
-export const contributeToPot = (req, res) => {
+export const contributeToPot = async (req, res) => {
   try {
     const { id } = req.params;
-    const { memberId } = req.body;
-    const result = potService.contribute(id, memberId);
+    const contributingUserId = req.user?.id || req.user?.email || req.body.userId || 'demo_user';
+    const result = await potService.contribute(id, contributingUserId);
     return successResponse(res, result, result.message || 'Contribution processed');
   } catch (err) {
     return errorResponse(res, err.message, 400);
   }
 };
 
-export const advanceNextRound = (req, res) => {
+export const joinPot = (req, res) => {
   try {
-    const { id } = req.params;
-    const result = potService.advanceNextRound(id);
-    return successResponse(res, result, result.message);
+    const { inviteCode } = req.body;
+    const userId = req.user?.id || req.user?.email || req.body.userId || 'demo_user';
+    if (!inviteCode) return errorResponse(res, 'inviteCode is required', 400);
+    const pot = potService.joinPotByInviteCode(inviteCode, userId);
+    return successResponse(res, pot, `Successfully joined ${pot.name}`);
   } catch (err) {
     return errorResponse(res, err.message, 400);
   }
 };
 
-export const resetDemoPot = (req, res) => {
+export const voteInvestment = (req, res) => {
   try {
     const { id } = req.params;
-    const result = potService.resetDemoPot(id);
-    return successResponse(res, result, 'Demo pot reset to 4/5 paid state');
+    const { approved } = req.body;
+    const userId = req.user?.id || req.user?.email || req.body.userId || 'demo_user';
+    const result = potService.voteInvestment(id, userId, approved);
+    return successResponse(res, result, 'Investment vote recorded');
   } catch (err) {
     return errorResponse(res, err.message, 400);
   }
 };
-

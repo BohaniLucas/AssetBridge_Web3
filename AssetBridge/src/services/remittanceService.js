@@ -2,6 +2,7 @@ export const FX_DESTINATIONS = [
   // --- Africa ---
   {
     code: 'tKES',
+    iso: 'KE',
     name: 'Kenyan Shilling',
     country: 'Kenya',
     flag: '🇰🇪',
@@ -14,6 +15,7 @@ export const FX_DESTINATIONS = [
   },
   {
     code: 'tZAR',
+    iso: 'ZA',
     name: 'South African Rand',
     country: 'South Africa',
     flag: '🇿🇦',
@@ -26,6 +28,7 @@ export const FX_DESTINATIONS = [
   },
   {
     code: 'tNGN',
+    iso: 'NG',
     name: 'Nigerian Naira',
     country: 'Nigeria',
     flag: '🇳🇬',
@@ -38,6 +41,7 @@ export const FX_DESTINATIONS = [
   },
   {
     code: 'tGHS',
+    iso: 'GH',
     name: 'Ghanaian Cedi',
     country: 'Ghana',
     flag: '🇬🇭',
@@ -50,6 +54,7 @@ export const FX_DESTINATIONS = [
   },
   {
     code: 'tUGX',
+    iso: 'UG',
     name: 'Ugandan Shilling',
     country: 'Uganda',
     flag: '🇺🇬',
@@ -62,6 +67,7 @@ export const FX_DESTINATIONS = [
   },
   {
     code: 'tRWF',
+    iso: 'RW',
     name: 'Rwandan Franc',
     country: 'Rwanda',
     flag: '🇷🇼',
@@ -74,6 +80,7 @@ export const FX_DESTINATIONS = [
   },
   {
     code: 'tEGP',
+    iso: 'EG',
     name: 'Egyptian Pound',
     country: 'Egypt',
     flag: '🇪🇬',
@@ -88,6 +95,7 @@ export const FX_DESTINATIONS = [
   // --- Americas ---
   {
     code: 'tUSD',
+    iso: 'US',
     name: 'United States Dollar',
     country: 'United States',
     flag: '🇺🇸',
@@ -100,6 +108,7 @@ export const FX_DESTINATIONS = [
   },
   {
     code: 'tCAD',
+    iso: 'CA',
     name: 'Canadian Dollar',
     country: 'Canada',
     flag: '🇨🇦',
@@ -112,6 +121,7 @@ export const FX_DESTINATIONS = [
   },
   {
     code: 'tBRL',
+    iso: 'BR',
     name: 'Brazilian Real',
     country: 'Brazil',
     flag: '🇧🇷',
@@ -124,6 +134,7 @@ export const FX_DESTINATIONS = [
   },
   {
     code: 'tMXN',
+    iso: 'MX',
     name: 'Mexican Peso',
     country: 'Mexico',
     flag: '🇲🇽',
@@ -138,6 +149,7 @@ export const FX_DESTINATIONS = [
   // --- Europe & UK ---
   {
     code: 'tGBP',
+    iso: 'GB',
     name: 'British Pound',
     country: 'United Kingdom',
     flag: '🇬🇧',
@@ -150,6 +162,7 @@ export const FX_DESTINATIONS = [
   },
   {
     code: 'tEUR',
+    iso: 'EU',
     name: 'Euro',
     country: 'Eurozone (EU)',
     flag: '🇪🇺',
@@ -162,6 +175,7 @@ export const FX_DESTINATIONS = [
   },
   {
     code: 'tCHF',
+    iso: 'CH',
     name: 'Swiss Franc',
     country: 'Switzerland',
     flag: '🇨🇭',
@@ -176,6 +190,7 @@ export const FX_DESTINATIONS = [
   // --- Asia-Pacific ---
   {
     code: 'tINR',
+    iso: 'IN',
     name: 'Indian Rupee',
     country: 'India',
     flag: '🇮🇳',
@@ -188,6 +203,7 @@ export const FX_DESTINATIONS = [
   },
   {
     code: 'tPHP',
+    iso: 'PH',
     name: 'Philippine Peso',
     country: 'Philippines',
     flag: '🇵🇭',
@@ -200,6 +216,7 @@ export const FX_DESTINATIONS = [
   },
   {
     code: 'tAED',
+    iso: 'AE',
     name: 'UAE Dirham',
     country: 'United Arab Emirates',
     flag: '🇦🇪',
@@ -212,18 +229,20 @@ export const FX_DESTINATIONS = [
   },
   {
     code: 'tSGD',
+    iso: 'SG',
     name: 'Singapore Dollar',
     country: 'Singapore',
     flag: '🇸🇬',
     region: 'Asia-Pacific',
     ratePerUsd: 1.34,
     symbol: 'S$',
-    mobileChannels: ['PayNow', 'FAST'],
+    mobileChannels: ['PayNow Instant', 'FAST'],
     recipientType: 'PayNow NRIC / Mobile (+65...)',
     defaultRecipient: '+65 9123 4567',
   },
   {
     code: 'tJPY',
+    iso: 'JP',
     name: 'Japanese Yen',
     country: 'Japan',
     flag: '🇯🇵',
@@ -231,14 +250,22 @@ export const FX_DESTINATIONS = [
     ratePerUsd: 153.20,
     symbol: '¥',
     mobileChannels: ['Zengin Real-Time', 'PayPay'],
-    recipientType: 'Account & Branch Code',
-    defaultRecipient: 'Branch 001 · Acc 1234567',
+    recipientType: 'Bank Code & Account / PayPay ID',
+    defaultRecipient: '0001-1234567',
   },
 ];
 
-export const REGIONS = ['All', 'Africa', 'Europe & UK', 'Americas', 'Asia-Pacific'];
+export const REGIONS = ['All', 'Africa', 'Americas', 'Europe & UK', 'Asia-Pacific'];
 
 export const remittanceService = {
+  getDestinations() {
+    return FX_DESTINATIONS;
+  },
+
+  getDestination(code) {
+    return FX_DESTINATIONS.find((d) => d.code === code) || FX_DESTINATIONS[0];
+  },
+
   async fetchDestinations() {
     try {
       const res = await fetch('http://localhost:5000/api/remittance/destinations');
@@ -255,7 +282,7 @@ export const remittanceService = {
   },
 
   calculateComparison(amountUsd = 100, targetCode = 'tKES') {
-    const dest = FX_DESTINATIONS.find(d => d.code === targetCode) || FX_DESTINATIONS[0];
+    const dest = FX_DESTINATIONS.find((d) => d.code === targetCode) || FX_DESTINATIONS[0];
     const amount = Number(amountUsd) || 0;
 
     // AssetBridge metrics
@@ -280,26 +307,36 @@ export const remittanceService = {
         receivedFormatted: `${dest.symbol} ${abReceived.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         receivedRaw: abReceived,
         fee: `$${abFee.toFixed(2)}`,
-        speed: 'Instant (~3s)',
-        exchangeRateFormatted: `1 USDT = ${dest.ratePerUsd.toFixed(2)} ${dest.symbol}`,
-        hiddenMarkup: '$0.00 (Zero FX Spread)',
-        deliveryChannel: `Direct to ${dest.mobileChannels?.[0] || 'Local Bank / Wallet'}`,
+        speed: '~3 seconds (On-chain)',
+        settlementTime: 'Instant (~4 seconds on-chain)',
+        exchangeRateFormatted: `1 USDT = ${dest.ratePerUsd.toLocaleString()} ${dest.symbol}`,
+        effectiveRate: `1 USDT = ${dest.ratePerUsd.toLocaleString()} ${dest.symbol}`,
+        spread: '0.0% (Zero hidden markup)',
       },
       traditionalBank: {
         receivedFormatted: `${dest.symbol} ${bankReceived.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        receivedRaw: bankReceived,
         fee: `$${bankFixedFee.toFixed(2)}`,
-        speed: '3 - 5 Business Days',
+        speed: '3 - 5 business days',
         exchangeRateFormatted: `1 USD = ${bankEffectiveRate.toFixed(2)} ${dest.symbol}`,
-        hiddenMarkup: `$${(amount * bankFxMarkupRate).toFixed(2)} (4.5% hidden spread)`,
-        deliveryChannel: 'SWIFT Correspondent Banking',
+        spread: '4.5% hidden markup',
+      },
+      bankWire: {
+        receivedFormatted: `${dest.symbol} ${bankReceived.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        fee: `$${bankFixedFee.toFixed(2)}`,
+        spread: '4.5% hidden markup',
+        settlementTime: '3 - 5 business days',
+        effectiveRate: `1 USD = ${bankEffectiveRate.toFixed(2)} ${dest.symbol}`,
       },
       advantage: {
-        extraReceivedFormatted: `${dest.symbol} ${extraReceivedLocal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         extraReceivedUsd: extraReceivedUsd.toFixed(2),
-        speedComparison: '1,000x faster settlement',
-        lossWithBankPercent: amount > 0 ? (((amount - (bankReceived / dest.ratePerUsd)) / amount) * 100).toFixed(1) : 0,
-      }
+        extraReceivedFormatted: `+${dest.symbol} ${extraReceivedLocal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        percentSaved: amount > 0 ? (((abReceived - bankReceived) / Math.max(1, bankReceived)) * 100).toFixed(1) : '0',
+      },
+      savings: {
+        extraLocalFormatted: `+${dest.symbol} ${extraReceivedLocal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        extraUsdFormatted: `+$${extraReceivedUsd.toFixed(2)}`,
+        pctBetter: amount > 0 ? (((abReceived - bankReceived) / Math.max(1, bankReceived)) * 100).toFixed(1) : '0',
+      },
     };
-  }
+  },
 };

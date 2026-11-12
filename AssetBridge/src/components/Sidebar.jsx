@@ -7,7 +7,7 @@ export default function Sidebar({ currentView, onNavigate, onLogout }) {
     { id: 'remittance', label: 'Send Home (Remittance)', icon: Send },
     { id: 'stokvel', label: 'Stokvel Pots', icon: Users },
     { id: 'trading', label: 'Trade Markets', icon: TrendingUp },
-    { id: 'news', label: 'News & Updates', icon: Newspaper },
+    { id: 'split', label: 'Split Payments', icon: ArrowRightLeft },
     { id: 'reserves', label: 'Reserve Panel', icon: ShieldCheck },
   ];
 

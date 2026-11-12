@@ -1,4 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../services/supabaseService.js';
+import { userService } from '../services/userService.js';
+import { walletService } from '../services/walletService.js';
 import { successResponse, errorResponse } from '../utils/responseHelper.js';
 
 export const signUp = async (req, res) => {
@@ -9,39 +11,39 @@ export const signUp = async (req, res) => {
       return errorResponse(res, 'Email and password are required', 400);
     }
 
-    if (!isSupabaseConfigured()) {
-      // Graceful fallback for local development before user enters keys into .env
-      return successResponse(res, {
-        user: {
-          id: `demo-usr-${Date.now()}`,
+    // Authoritative backend registration enforcing role: 'USER'
+    const regResult = await userService.registerUser({ email, password, fullName });
+    const wallet = walletService.getOrCreateWallet(regResult.user.email);
+
+    // If Supabase is configured, also register in Supabase
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await supabase.auth.signUp({
           email,
-          user_metadata: { full_name: fullName || 'Demo User' },
-        },
-        session: {
-          access_token: 'mock-jwt-token-configure-supabase-in-env',
-          token_type: 'bearer',
-        },
-        note: 'Supabase keys not configured in backend .env yet. Mock session granted for UI demonstration.',
-      }, 'Account registered successfully', 201);
+          password,
+          options: { data: { full_name: fullName, role: regResult.user.role } },
+        });
+      } catch {
+        // Continue with local authoritative user
+      }
     }
 
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: fullName,
-        },
-      },
+    walletService.recordAuditLog('USER_REGISTERED', regResult.user.email, {
+      role: regResult.user.role,
+      fullName: regResult.user.fullName,
     });
 
-    if (error) {
-      return errorResponse(res, error.message, 400);
-    }
-
-    return successResponse(res, data, 'User signed up successfully via Supabase', 201);
+    return successResponse(res, {
+      user: regResult.user,
+      wallet,
+      token: regResult.token,
+      session: {
+        access_token: regResult.token,
+        token_type: 'bearer',
+      },
+    }, 'Account registered successfully', 201);
   } catch (err) {
-    return errorResponse(res, err.message, 500);
+    return errorResponse(res, err.message, err.statusCode || 400);
   }
 };
 
@@ -53,47 +55,82 @@ export const signIn = async (req, res) => {
       return errorResponse(res, 'Email and password are required', 400);
     }
 
-    if (!isSupabaseConfigured()) {
-      return successResponse(res, {
-        user: {
-          id: 'demo-user-1',
-          email,
-          user_metadata: { full_name: 'Zoia M.' },
-        },
-        session: {
-          access_token: 'mock-jwt-token-configure-supabase-in-env',
-          token_type: 'bearer',
-        },
-        note: 'Supabase keys not configured in backend .env yet. Mock session granted for UI demonstration.',
-      }, 'Logged in successfully (Demo mode)');
-    }
+    const authResult = await userService.authenticateUser(email, password);
+    const wallet = walletService.getOrCreateWallet(authResult.user.email);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+    walletService.recordAuditLog('USER_LOGIN_SUCCESS', authResult.user.email, {
+      role: authResult.user.role,
     });
 
-    if (error) {
-      return errorResponse(res, error.message, 401);
+    return successResponse(res, {
+      user: authResult.user,
+      wallet,
+      token: authResult.token,
+      session: {
+        access_token: authResult.token,
+        token_type: 'bearer',
+      },
+    }, 'Logged in successfully');
+  } catch (err) {
+    return errorResponse(res, err.message, err.statusCode || 401);
+  }
+};
+
+/**
+ * Dedicated Administrator Login Endpoint
+ * Authoritatively verifies that the account possesses the ADMIN role on the backend.
+ * Rejects normal users with a 403 Forbidden Access Denied error.
+ */
+export const adminSignIn = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return errorResponse(res, 'Email and password are required', 400);
     }
 
-    return successResponse(res, data, 'Logged in successfully via Supabase');
+    // Require role: 'ADMIN'
+    const authResult = await userService.authenticateUser(email, password, 'ADMIN');
+
+    walletService.recordAuditLog('ADMIN_LOGIN_SUCCESS', authResult.user.email, {
+      role: 'ADMIN',
+      portal: 'ADMIN_PORTAL',
+    });
+
+    return successResponse(res, {
+      user: authResult.user,
+      token: authResult.token,
+      session: {
+        access_token: authResult.token,
+        token_type: 'bearer',
+      },
+    }, 'Administrator authenticated successfully');
   } catch (err) {
-    return errorResponse(res, err.message, 500);
+    const status = err.statusCode || 401;
+    return errorResponse(res, err.message, status);
   }
 };
 
 export const getProfile = async (req, res) => {
-  return successResponse(res, {
-    username: 'zoia_m',
-    fullName: 'Zoia M.',
-    walletAddress: '0x884a...12be',
-    balances: {
-      tUSDT: 17643.41,
-      tAAPL: 1.25,
-      tKES: 12950.00,
-      tZAR: 2500.00,
+  try {
+    const email = req.user?.email || req.query.email;
+    if (!email) {
+      return errorResponse(res, 'Authentication required', 401);
     }
-  });
-};
 
+    const role = userService.getRoleForEmail(email);
+    const wallet = walletService.getOrCreateWallet(email);
+
+    return successResponse(res, {
+      user: {
+        id: req.user?.id || email,
+        email,
+        fullName: req.user?.fullName || email.split('@')[0],
+        role,
+      },
+      wallet,
+    }, 'User profile retrieved');
+  } catch (err) {
+    return errorResponse(res, err.message, 500);
+  }
+};
