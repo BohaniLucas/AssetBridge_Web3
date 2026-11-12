@@ -14,6 +14,7 @@ import RemittanceScreen from './src/screens/RemittanceScreen';
 import StokvelScreen from './src/screens/StokvelScreen';
 import MarketsScreen from './src/screens/MarketsScreen';
 import { mobileWalletService } from './src/services/walletService';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('wallet'); // 'wallet' | 'remittance' | 'stokvel' | 'markets'
@@ -75,7 +76,7 @@ export default function App() {
       <View style={styles.navBar}>
         <View style={styles.brandGroup}>
           <View style={styles.logoBadge}>
-            <Text style={styles.logoText}>AB</Text>
+            <Ionicons name="swap-horizontal" size={21} color="#101936" />
           </View>
           <View>
             <Text style={styles.brandTitle}>AssetBridge</Text>
@@ -118,7 +119,7 @@ export default function App() {
           onPress={() => setCurrentTab('wallet')}
           activeOpacity={0.7}
         >
-          <Text style={[styles.tabIcon, currentTab === 'wallet' && styles.tabIconActive]}>💳</Text>
+          <Ionicons name={currentTab === 'wallet' ? 'wallet' : 'wallet-outline'} size={21} color={currentTab === 'wallet' ? '#00C29A' : '#94A3B8'} />
           <Text style={[styles.tabLabel, currentTab === 'wallet' && styles.tabLabelActive]}>Wallet</Text>
         </TouchableOpacity>
 
@@ -128,7 +129,7 @@ export default function App() {
           onPress={() => setCurrentTab('remittance')}
           activeOpacity={0.7}
         >
-          <Text style={[styles.tabIcon, currentTab === 'remittance' && styles.tabIconActive]}>🌍</Text>
+          <Ionicons name={currentTab === 'remittance' ? 'globe' : 'globe-outline'} size={21} color={currentTab === 'remittance' ? '#00C29A' : '#94A3B8'} />
           <Text style={[styles.tabLabel, currentTab === 'remittance' && styles.tabLabelActive]}>Remit</Text>
         </TouchableOpacity>
 
@@ -138,7 +139,7 @@ export default function App() {
           onPress={() => setCurrentTab('stokvel')}
           activeOpacity={0.7}
         >
-          <Text style={[styles.tabIcon, currentTab === 'stokvel' && styles.tabIconActive]}>👥</Text>
+          <Ionicons name={currentTab === 'stokvel' ? 'people' : 'people-outline'} size={21} color={currentTab === 'stokvel' ? '#00C29A' : '#94A3B8'} />
           <Text style={[styles.tabLabel, currentTab === 'stokvel' && styles.tabLabelActive]}>Stokvels</Text>
         </TouchableOpacity>
 
@@ -148,7 +149,7 @@ export default function App() {
           onPress={() => setCurrentTab('markets')}
           activeOpacity={0.7}
         >
-          <Text style={[styles.tabIcon, currentTab === 'markets' && styles.tabIconActive]}>📈</Text>
+          <Ionicons name={currentTab === 'markets' ? 'trending-up' : 'trending-up-outline'} size={21} color={currentTab === 'markets' ? '#00C29A' : '#94A3B8'} />
           <Text style={[styles.tabLabel, currentTab === 'markets' && styles.tabLabelActive]}>Markets</Text>
         </TouchableOpacity>
       </View>

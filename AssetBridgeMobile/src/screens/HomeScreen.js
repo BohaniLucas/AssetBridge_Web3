@@ -11,6 +11,7 @@ import {
   Alert,
   Share,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { mobileWalletService } from '../services/walletService';
 import { mobileClaimService } from '../services/claimService';
 
@@ -19,6 +20,8 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
   const [showSendModal, setShowSendModal] = useState(false);
   const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [showClaimModal, setShowClaimModal] = useState(false);
+  const [showMoreActions, setShowMoreActions] = useState(false);
+  const [transactions, setTransactions] = useState([]);
 
   // Send USDT flow
   const [sendStep, setSendStep] = useState(1); // 1: input, 2: review, 3: receipt
@@ -44,6 +47,14 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
   const savedRecipients = mobileWalletService.getSavedRecipients();
   const usdtBalance = wallet ? Number(wallet.balanceUsdt || 0) : 1000.0;
   const portfolioTotalUsd = usdtBalance + 1.25 * 236.40 + 12950 / 129.50; // mirrors web dashboard
+
+  useEffect(() => {
+    let active = true;
+    mobileWalletService.getTransactions(wallet?.userId).then((items) => {
+      if (active) setTransactions(items || []);
+    });
+    return () => { active = false; };
+  }, [wallet?.userId, wallet?.balanceUsdt]);
 
   const handleCopy = () => {
     setCopied(true);
@@ -176,115 +187,45 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* 1. LUXURIOUS PORTFOLIO CARD (Matches Web Dashboard) */}
-      <View style={styles.portfolioCard}>
-        <View style={styles.portfolioHeader}>
-          <Text style={styles.portfolioLabel}>TETHER PORTFOLIO BALANCE</Text>
-          <View style={styles.sepoliaBadge}>
-            <View style={styles.sepoliaDot} />
-            <Text style={styles.sepoliaText}>SEPOLIA EVM</Text>
-          </View>
-        </View>
-
-        {/* Balance & 24h Change */}
-        <View style={styles.balanceRow}>
-          <Text style={styles.balanceAmount}>
-            ${portfolioTotalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </Text>
-          <View style={styles.changePill}>
-            <Text style={styles.changeText}>+1.82%</Text>
-          </View>
-        </View>
-
-        {/* Truncated Sepolia Address & Faucet */}
-        <View style={styles.addressAndFaucetRow}>
-          <TouchableOpacity style={styles.addressBox} onPress={handleCopy}>
-            <Text style={styles.addressLabel}>Tether Addr: </Text>
-            <Text style={styles.addressValue} numberOfLines={1}>
-              {wallet?.address ? `${wallet.address.slice(0, 8)}...${wallet.address.slice(-6)}` : '0x4f0b...e09f'}
-            </Text>
-            <Text style={styles.copyIcon}>{copied ? '✓' : '📋'}</Text>
+      {/* Wallet overview inspired by the reference; balances remain wallet assets. */}
+      <View style={styles.walletHero}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.currencyStrip}>
+          {[
+            { flag: '🇺🇸', code: 'USD', value: usdtBalance },
+            { flag: '🇪🇺', code: 'EUR', value: usdtBalance * 0.92 },
+            { flag: '🇦🇺', code: 'AUD', value: usdtBalance * 1.52 },
+          ].map((asset) => (
+            <View key={asset.code} style={styles.currencyAsset}>
+              <Text style={styles.currencyFlag}>{asset.flag}</Text>
+              <View><Text style={styles.currencyCode}>{asset.code}</Text><Text style={styles.currencyValue}>{asset.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text></View>
+            </View>
+          ))}
+        </ScrollView>
+        <Text style={styles.portfolioLabel}>TOTAL PORTFOLIO VALUE</Text>
+        <Text style={styles.balanceAmount}>${portfolioTotalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+        <View style={styles.heroUtilityRow}>
+          <TouchableOpacity style={styles.addressBox} onPress={handleCopy} accessibilityLabel="Copy wallet address">
+            <Ionicons name="copy-outline" size={15} color="#D7E6FF" />
+            <Text style={styles.addressValue} numberOfLines={1}>{wallet?.address ? `${wallet.address.slice(0, 8)}...${wallet.address.slice(-6)}` : 'Wallet loading'}</Text>
+            <Text style={styles.copyIcon}>{copied ? 'Copied' : ''}</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity style={styles.faucetBtn} onPress={onFaucet}>
-            <Text style={styles.faucetBtnText}>+250 USDT</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Performance Trend Line Simulation */}
-        <View style={styles.trendContainer}>
-          <View style={styles.trendLineHeader}>
-            <Text style={styles.trendLabel}>Portfolio Performance Trend</Text>
-            <Text style={styles.trendSub}>Live On-Chain Value</Text>
-          </View>
-          <View style={styles.trendBarTrack}>
-            <View style={[styles.trendBarFill, { width: '82%' }]} />
-          </View>
-        </View>
-
-        {/* Bottom Card Footer */}
-        <View style={styles.portfolioFooter}>
-          <Text style={styles.footerAssetsText}>📦 3 assets held · 24/7 liquidity</Text>
-          <Text style={styles.footerSettlementText}>⚡ Tether Instant</Text>
+          <View style={styles.sepoliaBadge}><View style={styles.sepoliaDot} /><Text style={styles.sepoliaText}>SEPOLIA</Text></View>
         </View>
       </View>
 
-      {/* 2. QUICK ACTIONS (2x2 Grid Matching Web Pastel Colors) */}
-      <View style={styles.quickGrid}>
-        {/* Action 1: Send USDT (Emerald) */}
-        <TouchableOpacity
-          style={[styles.quickCard, { backgroundColor: '#E5F9F0', borderColor: '#A7F3D0' }]}
-          onPress={() => {
-            setSendStep(1);
-            setShowSendModal(true);
-          }}
-        >
-          <View style={[styles.quickIconBox, { backgroundColor: '#D1FAE5' }]}>
-            <Text style={{ fontSize: 20 }}>↑</Text>
-          </View>
-          <Text style={[styles.quickTitle, { color: '#065F46' }]}>Send USDT</Text>
-          <Text style={styles.quickSub}>P2P On-Chain</Text>
-        </TouchableOpacity>
-
-        {/* Action 2: Receive QR (Blue) */}
-        <TouchableOpacity
-          style={[styles.quickCard, { backgroundColor: '#EAF3FF', borderColor: '#BAE6FD' }]}
-          onPress={() => setShowReceiveModal(true)}
-        >
-          <View style={[styles.quickIconBox, { backgroundColor: '#E0F2FE' }]}>
-            <Text style={{ fontSize: 20 }}>↓</Text>
-          </View>
-          <Text style={[styles.quickTitle, { color: '#0369A1' }]}>Receive QR</Text>
-          <Text style={styles.quickSub}>Deposit Tether</Text>
-        </TouchableOpacity>
-
-        {/* Action 3: Send to Gogo via WhatsApp (Warm Amber - Zero Crypto) */}
-        <TouchableOpacity
-          style={[styles.quickCard, { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }]}
-          onPress={() => {
-            setActiveClaim(null);
-            setShowClaimModal(true);
-          }}
-        >
-          <View style={[styles.quickIconBox, { backgroundColor: '#FEF3C7' }]}>
-            <Text style={{ fontSize: 20 }}>👵</Text>
-          </View>
-          <Text style={[styles.quickTitle, { color: '#92400E' }]}>Send via WhatsApp</Text>
-          <Text style={styles.quickSub}>Gogo Flow (Rand)</Text>
-        </TouchableOpacity>
-
-        {/* Action 4: Send Home / Remit (Purple) */}
-        <TouchableOpacity
-          style={[styles.quickCard, { backgroundColor: '#F3EBFF', borderColor: '#E9D5FF' }]}
-          onPress={() => onNavigate('remittance')}
-        >
-          <View style={[styles.quickIconBox, { backgroundColor: '#EDE9FE' }]}>
-            <Text style={{ fontSize: 20 }}>🌍</Text>
-          </View>
-          <Text style={[styles.quickTitle, { color: '#6B21A8' }]}>Send Home</Text>
-          <Text style={styles.quickSub}>0% FX Remit</Text>
-        </TouchableOpacity>
+      <View style={styles.actionGrid}>
+        {[
+          { label: 'Add', icon: 'add', action: onFaucet },
+          { label: 'Send', icon: 'arrow-up', action: () => { setSendStep(1); setShowSendModal(true); } },
+          { label: 'Convert', icon: 'swap-horizontal', action: () => onNavigate('markets') },
+          { label: 'More', icon: 'ellipsis-horizontal', action: () => setShowMoreActions((open) => !open) },
+        ].map((item) => <TouchableOpacity key={item.label} style={styles.primaryAction} onPress={item.action}><Ionicons name={item.icon} size={21} color="#101936" /><Text style={styles.primaryActionText}>{item.label}</Text></TouchableOpacity>)}
       </View>
+      {showMoreActions && <View style={styles.moreActions}>
+        <TouchableOpacity style={styles.moreAction} onPress={() => setShowReceiveModal(true)}><Ionicons name="qr-code-outline" size={18} color="#101936" /><Text style={styles.moreActionText}>Receive QR</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.moreAction} onPress={() => { setActiveClaim(null); setShowClaimModal(true); }}><Ionicons name="chatbubble-ellipses-outline" size={18} color="#101936" /><Text style={styles.moreActionText}>Send via WhatsApp</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.moreAction} onPress={() => onNavigate('remittance')}><Ionicons name="globe-outline" size={18} color="#101936" /><Text style={styles.moreActionText}>Send Home</Text></TouchableOpacity>
+      </View>}
 
       {/* 3. SEND TO FAMILY & FREQUENT CONTACTS */}
       <View style={styles.section}>
@@ -359,35 +300,28 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
         </View>
       </View>
 
-      {/* 5. RECENT ACTIVITY LEDGER */}
+      {/* Transaction details and settlement status */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Recent Activity</Text>
+          <Text style={styles.sectionTitle}>Transactions</Text>
           <TouchableOpacity onPress={onRefresh}>
-            <Text style={styles.sectionLink}>Refresh</Text>
+            <Ionicons name="refresh-outline" size={19} color="#00A987" />
           </TouchableOpacity>
         </View>
-
-        <View style={styles.activityCard}>
-          <View style={styles.activityIconBox}>
-            <Text style={{ fontSize: 18 }}>⚡</Text>
-          </View>
-          <View style={styles.activityInfo}>
-            <Text style={styles.activityTitle}>P2P Transfer to Mama Thandi</Text>
-            <Text style={styles.activityDetail}>Confirmed on Sepolia · Idempotent</Text>
-          </View>
-          <Text style={styles.activityAmount}>-$25.00 USDT</Text>
-        </View>
-
-        <View style={styles.activityCard}>
-          <View style={[styles.activityIconBox, { backgroundColor: '#E0F2FE' }]}>
-            <Text style={{ fontSize: 18, color: '#0369A1' }}>👥</Text>
-          </View>
-          <View style={styles.activityInfo}>
-            <Text style={styles.activityTitle}>Tech Queens Stokvel Contribution</Text>
-            <Text style={styles.activityDetail}>Round #4 Vault Deposit</Text>
-          </View>
-          <Text style={styles.activityAmount}>-$20.00 USDT</Text>
+        <View style={styles.transactionCard}>
+          {transactions.map((transaction) => {
+            const sent = transaction.type === 'p2p_transfer' || transaction.type === 'transfer';
+            const from = transaction.senderUserId === wallet?.userId ? 'You' : (transaction.senderUserId || 'External wallet');
+            const to = sent ? (transaction.recipientAddress || 'Recipient') : (wallet?.address || 'You');
+            const dateValue = transaction.timestamp || transaction.createdAt;
+            const settlement = transaction.claimedAt || transaction.receivedAt || transaction.settledAt || (transaction.status === 'confirmed' ? dateValue : null);
+            return <View key={transaction.id || transaction.txHash} style={styles.transactionRow}>
+              <View style={styles.transactionTop}><Text style={styles.transactionDate}>{dateValue ? new Date(dateValue).toLocaleDateString() : '—'}</Text><Text style={[styles.statusPill, transaction.status === 'confirmed' || transaction.status === 'claimed' ? styles.statusComplete : styles.statusPending]}>{transaction.status || 'pending'}</Text></View>
+              <View style={styles.transactionParties}><View style={styles.party}><Text style={styles.partyLabel}>FROM</Text><Text style={styles.partyValue} numberOfLines={1}>{from}</Text></View><Ionicons name="arrow-forward" size={15} color="#94A3B8" /><View style={styles.party}><Text style={styles.partyLabel}>TO</Text><Text style={styles.partyValue} numberOfLines={1}>{to}</Text></View></View>
+              <Text style={styles.settledAt}>{settlement ? `${transaction.status === 'claimed' ? 'Claimed' : 'Received'} ${new Date(settlement).toLocaleString()}` : 'Received / claimed time: Pending'}</Text>
+            </View>;
+          })}
+          {!transactions.length && <Text style={styles.emptyTransactions}>No transactions yet. Completed transfers will appear here.</Text>}
         </View>
       </View>
 
@@ -661,6 +595,20 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   content: { padding: 16, paddingBottom: 32 },
 
+  walletHero: { backgroundColor: '#101936', borderRadius: 24, padding: 20, overflow: 'hidden' },
+  currencyStrip: { flexDirection: 'row', gap: 22, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.15)', paddingBottom: 15, marginBottom: 18 },
+  currencyAsset: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  currencyFlag: { fontSize: 23 },
+  currencyCode: { color: '#C7D9F7', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+  currencyValue: { color: '#FFFFFF', fontSize: 13, fontWeight: '800', marginTop: 2 },
+  heroUtilityRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 13 },
+  actionGrid: { flexDirection: 'row', gap: 8, marginTop: 14 },
+  primaryAction: { flex: 1, minHeight: 76, borderRadius: 15, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: '#E7EBF2' },
+  primaryActionText: { color: '#101936', fontSize: 12, fontWeight: '800' },
+  moreActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 10, padding: 12, borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0' },
+  moreAction: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F1F5F9', borderRadius: 18, paddingHorizontal: 11, paddingVertical: 9 },
+  moreActionText: { color: '#334155', fontSize: 11, fontWeight: '700' },
+
   // 1. Luxurious Portfolio Card
   portfolioCard: {
     backgroundColor: '#101936',
@@ -785,6 +733,19 @@ const styles = StyleSheet.create({
   assetSub: { fontSize: 10, color: '#64748B' },
 
   // 5. Activity Ledger
+  transactionCard: { backgroundColor: '#FFFFFF', borderRadius: 18, borderWidth: 1, borderColor: '#E8EDF4', paddingHorizontal: 14 },
+  transactionRow: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#EEF2F6' },
+  transactionTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  transactionDate: { color: '#64748B', fontSize: 11, fontWeight: '600' },
+  statusPill: { textTransform: 'capitalize', overflow: 'hidden', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4, fontSize: 10, fontWeight: '800' },
+  statusComplete: { color: '#047857', backgroundColor: '#D1FAE5' },
+  statusPending: { color: '#A16207', backgroundColor: '#FEF3C7' },
+  transactionParties: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 10 },
+  party: { flex: 1 },
+  partyLabel: { color: '#94A3B8', fontSize: 9, fontWeight: '800', letterSpacing: 0.6 },
+  partyValue: { color: '#0F172A', fontSize: 11, fontWeight: '700', marginTop: 3 },
+  settledAt: { color: '#64748B', fontSize: 10, marginTop: 8 },
+  emptyTransactions: { color: '#64748B', fontSize: 12, paddingVertical: 16 },
   activityCard: {
     flexDirection: 'row',
     alignItems: 'center',
