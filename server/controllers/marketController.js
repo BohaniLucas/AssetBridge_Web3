@@ -1,5 +1,26 @@
 import { marketDataService } from '../services/marketDataService.js';
+import { marketNewsService } from '../services/marketNewsService.js';
 import { successResponse, errorResponse } from '../utils/responseHelper.js';
+
+const MARKET_NEWS_CATEGORIES = new Set(['all', 'crypto', 'markets']);
+
+export const getMarketNews = async (req, res) => {
+  const category = String(req.query.category || 'all').toLowerCase();
+  if (!MARKET_NEWS_CATEGORIES.has(category)) {
+    return errorResponse(res, 'Unsupported news category.', 400);
+  }
+
+  try {
+    const data = await marketNewsService.getLatest({
+      category,
+      refresh: req.query.refresh === 'true',
+    });
+    return successResponse(res, data, 'Latest market and crypto news');
+  } catch (err) {
+    const statusCode = /not configured/i.test(err?.message || '') ? 503 : 502;
+    return errorResponse(res, err?.message || 'Crypto news is temporarily unavailable.', statusCode);
+  }
+};
 
 /**
  * Returns all canonical market assets, optionally filtered or ranked by category

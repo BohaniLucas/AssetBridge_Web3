@@ -8,6 +8,7 @@ import {
   getForex,
   getEquities,
   getCrypto,
+  getMarketNews,
   generateTradeQuote,
   executeTrade,
 } from '../controllers/marketController.js';
@@ -18,6 +19,7 @@ const router = express.Router();
 // Public Authentic Market Feeds
 router.get('/all', getAllMarkets);
 router.get('/status', getMarketStatus);
+router.get('/news', getMarketNews);
 router.get('/search', searchMarkets);
 router.get('/history/:idOrSymbol', getAssetHistory);
 router.get('/asset/:idOrSymbol', getAssetDetail);
