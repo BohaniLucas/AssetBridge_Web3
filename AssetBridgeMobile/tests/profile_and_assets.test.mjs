@@ -16,6 +16,16 @@ registerHooks({
         `,
       };
     }
+    if (url.includes('node_modules/@tetherto/wdk-react-native-core')) {
+      return {
+        format: 'module',
+        shortCircuit: true,
+        source: `
+          export class BaseAsset { constructor(o) { Object.assign(this, o); } }
+          export default { BaseAsset };
+        `,
+      };
+    }
     return nextLoad(url, context);
   },
 });
@@ -252,4 +262,33 @@ test('Bank Deposit: Fiat to USDT conversion math and corridor reference rate', (
   const zarRate = 18.35;
   const zarUsdt = (zarDeposit / zarRate).toFixed(2);
   assert.equal(zarUsdt, '54.50');
+});
+
+test('WDK Configs: Validates against WDK wdkConfigsSchema with blockchain and config structure', async () => {
+  const { z } = await import('zod');
+  const wdkConfigSchema = z.object({
+    blockchain: z.string().min(1),
+    config: z.record(z.string(), z.unknown()).optional().default({}),
+  }).passthrough();
+
+  const wdkNetworkConfigsSchema = z.record(
+    z.string().regex(/^[a-zA-Z0-9_-]+$/, {
+      message: 'Network name must contain only alphanumeric characters, hyphens, and underscores',
+    }),
+    wdkConfigSchema
+  ).refine((configs) => Object.keys(configs).length > 0, {
+    message: 'NetworkConfigs must contain at least one network',
+  });
+
+  const wdkConfigsSchema = z.object({
+    networks: wdkNetworkConfigsSchema,
+    protocols: z.record(z.string(), z.any()).optional(),
+  });
+
+  const { wdkConfigs } = await import('../src/config/wdk.js');
+  const parsed = wdkConfigsSchema.parse(wdkConfigs);
+
+  assert.equal(parsed.networks.ethereum.blockchain, 'ethereum');
+  assert.equal(parsed.networks.ethereum.config.chainId, 11155111);
+  assert.equal(parsed.networks.ethereum.config.safeModulesVersion, '0.3.0');
 });

@@ -152,14 +152,27 @@ const isTesting = process.env.NODE_ENV === 'test' ||
   (Boolean(process.argv[1]) && process.argv[1].includes('test'));
 
 if (!isTesting) {
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Security] AssetBridge hardened API running on http://0.0.0.0:${PORT}`);
-    if (isSupabaseConfigured()) {
-      console.log('[Config] Supabase environment variables loaded.');
-    } else {
-      console.warn('[Config] Supabase is not configured. Set a real SUPABASE_URL and SUPABASE_ANON_KEY in server/.env; authentication will remain unavailable.');
-    }
-  });
+  const startServer = (portToTry, fallbackPort = 5001) => {
+    const serverInstance = app.listen(portToTry, '0.0.0.0', () => {
+      console.log(`[Security] InterLink API running on http://0.0.0.0:${portToTry}`);
+      if (isSupabaseConfigured()) {
+        console.log('[Config] Supabase environment variables loaded.');
+      } else {
+        console.warn('[Config] Supabase is not configured. Set a real SUPABASE_URL and SUPABASE_ANON_KEY in server/.env; authentication will remain unavailable.');
+      }
+    });
+
+    serverInstance.on('error', (err) => {
+      if ((err.code === 'EADDRINUSE' || err.code === 'EACCES') && fallbackPort && portToTry !== fallbackPort) {
+        console.warn(`[Port Conflict] Port ${portToTry} is occupied or reserved by Windows (${err.code}). Automatically switching to fallback port ${fallbackPort}...`);
+        startServer(fallbackPort, null);
+      } else {
+        console.error(`[Server Error] Failed to bind to port ${portToTry}:`, err.message);
+      }
+    });
+  };
+
+  startServer(PORT);
 }
 
 export default app;

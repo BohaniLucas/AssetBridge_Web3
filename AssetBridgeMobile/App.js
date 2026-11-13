@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  SafeAreaView,
   StyleSheet,
   View,
   Text,
@@ -366,7 +365,7 @@ function AppShell({ wdk }) {
 
   if (authLoading) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <View style={styles.safeArea}>
         <StatusBar barStyle="dark-content" backgroundColor="#F1F4F8" />
         <View style={styles.loadingScreen}>
           <Image
@@ -377,13 +376,13 @@ function AppShell({ wdk }) {
           <Text style={styles.loadingBrand}>InterLink</Text>
           <Text style={styles.loadingCopy}>Getting your account ready…</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (!session?.user) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <View style={styles.safeArea}>
         <StatusBar barStyle="light-content" backgroundColor="#0A0F1C" />
         <AuthFlowScreen
           onAuthenticated={(nextSession, meta) => {
@@ -393,13 +392,13 @@ function AppShell({ wdk }) {
             setSession(nextSession);
           }}
         />
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (walletSetupRequired && wdk.state?.status !== 'READY' && !walletReady) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <View style={styles.safeArea}>
         <StatusBar barStyle="light-content" backgroundColor="#0A0F1C" />
         <WalletSetupScreen
           walletId={walletId}
@@ -415,19 +414,19 @@ function AppShell({ wdk }) {
         {walletSetupError ? (
           <Text style={{ color: '#FCA5A5', padding: 12 }}>{walletSetupError}</Text>
         ) : null}
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (!walletReady) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <View style={styles.safeArea}>
         <StatusBar barStyle="dark-content" backgroundColor="#F1F4F8" />
         <View style={styles.loadingScreen}>
           <ActivityIndicator size="large" color="#00B87A" />
           <Text style={styles.loadingCopy}>Unlocking this device’s WDK wallet…</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -441,7 +440,7 @@ function AppShell({ wdk }) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#F1F4F8" />
 
       {/* --- MINIMALIST TOP NAV --- */}
@@ -657,7 +656,7 @@ function AppShell({ wdk }) {
         onUnlocked={() => sessionLockService.unlock()}
         onSignOut={handleSignOut}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 

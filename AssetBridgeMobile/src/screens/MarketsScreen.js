@@ -10,7 +10,6 @@ import {
   Image,
   ActivityIndicator,
   RefreshControl,
-  SafeAreaView,
   Platform,
   Alert,
 } from 'react-native';
@@ -288,7 +287,7 @@ export default function MarketsScreen({ wallet, currentUser, onNavigate }) {
   }, [historyData]);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.safeArea}>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
@@ -473,7 +472,7 @@ export default function MarketsScreen({ wallet, currentUser, onNavigate }) {
           onRequestClose={() => setSelectedAsset(null)}
         >
           {selectedAsset && (
-            <SafeAreaView style={styles.modalContainer}>
+            <View style={styles.modalContainer}>
               {/* Modal Header */}
               <View style={styles.modalHeader}>
                 <TouchableOpacity
@@ -702,7 +701,7 @@ export default function MarketsScreen({ wallet, currentUser, onNavigate }) {
 
                 <View style={{ height: 40 }} />
               </ScrollView>
-            </SafeAreaView>
+            </View>
           )}
         </Modal>
 
@@ -809,7 +808,7 @@ export default function MarketsScreen({ wallet, currentUser, onNavigate }) {
           </View>
         </Modal>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 

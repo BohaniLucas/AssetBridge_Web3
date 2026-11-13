@@ -9,7 +9,6 @@ import {
   Modal,
   ActivityIndicator,
   RefreshControl,
-  SafeAreaView,
   Platform,
   Alert,
 } from 'react-native';
@@ -225,7 +224,7 @@ export default function AssetsScreen({
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.safeArea}>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
@@ -729,7 +728,7 @@ export default function AssetsScreen({
           </View>
         </Modal>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 

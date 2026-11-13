@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -13,6 +14,13 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { mobileAuthService } from '../services/authService';
+import {
+  getApiBaseUrl,
+  initApiBaseUrl,
+  resetApiBaseUrl,
+  setCustomApiBaseUrl,
+  testServerConnectivity,
+} from '../config/api.js';
 
 const INK = '#0A0F1C';
 const GREEN = '#00E676';
@@ -109,6 +117,55 @@ export default function AuthFlowScreen({ onAuthenticated }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+
+  // Server IP & Network Configuration
+  const [serverUrl, setServerUrl] = useState(getApiBaseUrl());
+  const [showServerModal, setShowServerModal] = useState(false);
+  const [customIpInput, setCustomIpInput] = useState('');
+  const [testResult, setTestResult] = useState(null);
+  const [testingConnection, setTestingConnection] = useState(false);
+
+  useEffect(() => {
+    initApiBaseUrl().then((url) => {
+      setServerUrl(url);
+      setCustomIpInput(url);
+    });
+  }, []);
+
+  const handleTestConnection = async (target) => {
+    setTestingConnection(true);
+    setTestResult(null);
+    try {
+      const res = await testServerConnectivity(target || customIpInput || serverUrl);
+      setTestResult(res);
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
+  const handleSaveServerUrl = async () => {
+    const updated = await setCustomApiBaseUrl(customIpInput);
+    setServerUrl(updated);
+    setNotice(`Connected to server: ${updated}`);
+    setShowServerModal(false);
+  };
+
+  const handleResetServerUrl = async () => {
+    const updated = await resetApiBaseUrl();
+    setServerUrl(updated);
+    setCustomIpInput(updated);
+    setNotice(`Reset to default server: ${updated}`);
+    setShowServerModal(false);
+  };
+
+  const isConnectionError =
+    error &&
+    (error.includes('ConnectException') ||
+      error.includes('Failed to connect') ||
+      error.includes('Network request failed') ||
+      error.includes('fetch failed') ||
+      error.includes('Unable to reach') ||
+      error.includes('ECONNREFUSED'));
 
   const go = (next) => {
     setError('');
@@ -221,6 +278,20 @@ export default function AuthFlowScreen({ onAuthenticated }) {
               </TouchableOpacity>
             </View>
             <Text style={styles.previewDisclosure}>Preview build · wallet and payment features may be unavailable until connected to a verified network.</Text>
+            <TouchableOpacity
+              onPress={() => {
+                setTestResult(null);
+                setCustomIpInput(serverUrl);
+                setShowServerModal(true);
+              }}
+              style={styles.serverPillDark}
+            >
+              <Ionicons name="server-outline" size={12} color="#94A3B8" />
+              <Text style={styles.serverPillTextDark} numberOfLines={1}>
+                Backend: {serverUrl.replace(/^https?:\/\//, '')}
+              </Text>
+              <Ionicons name="options-outline" size={12} color="#00E676" />
+            </TouchableOpacity>
           </View>
         )}
 
@@ -316,7 +387,27 @@ export default function AuthFlowScreen({ onAuthenticated }) {
               </TouchableOpacity>
             )}
 
-            {error ? <View accessibilityRole="alert" style={styles.messageBox}><Ionicons name="alert-circle" size={18} color="#B91C1C" /><Text style={styles.errorText}>{error}</Text></View> : null}
+            {error ? (
+              <View accessibilityRole="alert" style={styles.messageBox}>
+                <Ionicons name="alert-circle" size={18} color="#B91C1C" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.errorText}>{error}</Text>
+                  {isConnectionError ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setTestResult(null);
+                        setCustomIpInput(serverUrl);
+                        setShowServerModal(true);
+                      }}
+                      style={styles.fixIpButton}
+                    >
+                      <Ionicons name="settings-outline" size={13} color="#991B1B" />
+                      <Text style={styles.fixIpButtonText}>Fix Server IP or Port</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              </View>
+            ) : null}
             {notice ? <View accessibilityRole="alert" style={styles.noticeBox}><Ionicons name="information-circle" size={18} color="#047857" /><Text style={styles.noticeText}>{notice}</Text></View> : null}
 
             <PrimaryButton
@@ -337,9 +428,129 @@ export default function AuthFlowScreen({ onAuthenticated }) {
                 <Text style={styles.switchAuthLink}>{screen === 'login' ? ' Create account' : ' Log in'}</Text>
               </TouchableOpacity>
             </View>
+
+            <TouchableOpacity
+              onPress={() => {
+                setTestResult(null);
+                setCustomIpInput(serverUrl);
+                setShowServerModal(true);
+              }}
+              style={styles.serverPillLight}
+            >
+              <Ionicons name="server-outline" size={12} color="#64748B" />
+              <Text style={styles.serverPillTextLight} numberOfLines={1}>
+                Backend: {serverUrl.replace(/^https?:\/\//, '')}
+              </Text>
+              <Ionicons name="options-outline" size={12} color="#059669" />
+            </TouchableOpacity>
           </View>
         )}
       </ScrollView>
+
+      {/* Server IP / Network Configuration Modal */}
+      <Modal
+        visible={showServerModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowServerModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleRow}>
+                <Ionicons name="server-outline" size={20} color={INK} />
+                <Text style={styles.modalTitle}>Server Connection</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowServerModal(false)} style={styles.modalCloseButton}>
+                <Ionicons name="close" size={20} color={INK} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubtitle}>
+              Connect your mobile app to your PC backend over Wi-Fi. Enter your computer IPv4 address.
+            </Text>
+
+            <View style={styles.modalFieldWrap}>
+              <Text style={styles.modalFieldLabel}>Backend Server URL / IP</Text>
+              <View style={styles.modalInputShell}>
+                <Ionicons name="globe-outline" size={16} color="#64748B" style={{ marginRight: 8 }} />
+                <TextInput
+                  value={customIpInput}
+                  onChangeText={setCustomIpInput}
+                  placeholder="e.g. 192.168.0.249:5001"
+                  placeholderTextColor="#94A3B8"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  style={styles.modalInput}
+                />
+              </View>
+            </View>
+
+            {/* Quick Fill Suggestions */}
+            <View style={styles.quickFillWrap}>
+              <Text style={styles.quickFillLabel}>Presets:</Text>
+              <TouchableOpacity
+                onPress={() => setCustomIpInput('http://192.168.0.249:5001/api')}
+                style={styles.quickFillChip}
+              >
+                <Text style={styles.quickFillChipText}>Current PC (192.168.0.249:5001)</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setCustomIpInput('http://10.0.2.2:5001/api')}
+                style={styles.quickFillChip}
+              >
+                <Text style={styles.quickFillChipText}>Emulator (10.0.2.2)</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Live Test Result */}
+            {testingConnection ? (
+              <View style={styles.testFeedbackBox}>
+                <ActivityIndicator size="small" color="#059669" />
+                <Text style={styles.testFeedbackText}>Pinging backend health endpoint...</Text>
+              </View>
+            ) : testResult ? (
+              <View style={[styles.testFeedbackBox, testResult.ok ? styles.testSuccessBox : styles.testFailBox]}>
+                <Ionicons
+                  name={testResult.ok ? 'checkmark-circle' : 'alert-circle'}
+                  size={18}
+                  color={testResult.ok ? '#047857' : '#B91C1C'}
+                />
+                <Text style={[styles.testFeedbackText, testResult.ok ? styles.testSuccessText : styles.testFailText]}>
+                  {testResult.ok ? `Connected successfully (${testResult.url})` : `Failed: ${testResult.message}`}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Modal Actions */}
+            <View style={styles.modalActionCol}>
+              <TouchableOpacity
+                onPress={() => handleTestConnection()}
+                disabled={testingConnection}
+                style={styles.modalSecondaryButton}
+              >
+                <Ionicons name="pulse-outline" size={16} color={INK} />
+                <Text style={styles.modalSecondaryButtonText}>Test Connection</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleSaveServerUrl}
+                style={styles.modalPrimaryButton}
+              >
+                <Ionicons name="save-outline" size={16} color={INK} />
+                <Text style={styles.modalPrimaryButtonText}>Save and Connect</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleResetServerUrl}
+                style={styles.modalResetButton}
+              >
+                <Text style={styles.modalResetButtonText}>Reset to Auto-Detect</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -427,4 +638,38 @@ const styles = StyleSheet.create({
   switchAuthRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 25, paddingVertical: 8 },
   switchAuthText: { color: MUTED, fontSize: 13 },
   switchAuthLink: { color: '#047857', fontSize: 13, fontWeight: '900' },
+  fixIpButton: { marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FEE2E2', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, alignSelf: 'flex-start' },
+  fixIpButtonText: { color: '#991B1B', fontSize: 11, fontWeight: '800' },
+  serverPillLight: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#FFFFFF', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: '#DCE3EB', alignSelf: 'center', marginTop: 18 },
+  serverPillTextLight: { color: '#64748B', fontSize: 11, fontWeight: '700', maxWidth: 220 },
+  serverPillDark: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#172236', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: '#28364C', alignSelf: 'center', marginTop: 14 },
+  serverPillTextDark: { color: '#94A3B8', fontSize: 11, fontWeight: '700', maxWidth: 220 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(10, 15, 28, 0.75)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalCard: { width: '100%', maxWidth: 380, backgroundColor: '#FFFFFF', borderRadius: 24, padding: 22, shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.25, shadowRadius: 20, elevation: 12 },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  modalTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  modalTitle: { color: INK, fontSize: 17, fontWeight: '900' },
+  modalCloseButton: { padding: 4 },
+  modalSubtitle: { color: MUTED, fontSize: 12, lineHeight: 18, marginBottom: 16 },
+  modalFieldWrap: { marginBottom: 12 },
+  modalFieldLabel: { color: INK, fontSize: 12, fontWeight: '800', marginBottom: 6 },
+  modalInputShell: { height: 48, borderRadius: 12, borderWidth: 1, borderColor: '#DCE3EB', backgroundColor: '#F8FAFC', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 },
+  modalInput: { flex: 1, height: '100%', color: INK, fontSize: 13, paddingVertical: 0 },
+  quickFillWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 14 },
+  quickFillLabel: { color: MUTED, fontSize: 11, fontWeight: '700' },
+  quickFillChip: { backgroundColor: '#F1F5F9', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' },
+  quickFillChipText: { color: '#334155', fontSize: 11, fontWeight: '600' },
+  testFeedbackBox: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, backgroundColor: '#F8FAFC', marginBottom: 14, borderWidth: 1, borderColor: '#E2E8F0' },
+  testFeedbackText: { flex: 1, fontSize: 11, color: '#475569', fontWeight: '600' },
+  testSuccessBox: { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' },
+  testSuccessText: { color: '#065F46' },
+  testFailBox: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
+  testFailText: { color: '#991B1B' },
+  modalActionCol: { gap: 8, marginTop: 4 },
+  modalPrimaryButton: { minHeight: 46, borderRadius: 12, backgroundColor: GREEN, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  modalPrimaryButtonText: { color: INK, fontWeight: '900', fontSize: 13 },
+  modalSecondaryButton: { minHeight: 44, borderRadius: 12, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#DCE3EB', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  modalSecondaryButtonText: { color: INK, fontWeight: '800', fontSize: 13 },
+  modalResetButton: { paddingVertical: 8, alignItems: 'center' },
+  modalResetButtonText: { color: MUTED, fontSize: 11, fontWeight: '700', textDecorationLine: 'underline' },
 });

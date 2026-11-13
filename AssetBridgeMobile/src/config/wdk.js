@@ -21,7 +21,7 @@ import {
   isValidPersonalEvmRecipient,
   assertSupportedWdkConfig,
   walletIdForUser,
-} from './wdkConstants';
+} from './wdkConstants.js';
 
 export {
   WDK_NETWORK_NAME,
@@ -69,6 +69,25 @@ export const wdkBundleConfig = {
 export const wdkConfigs = {
   networks: {
     [WDK_NETWORK_NAME]: {
+      blockchain: WDK_NETWORK_NAME,
+      config: {
+        chainId: WDK_SEPOLIA_CHAIN_ID,
+        provider: rpcUrl,
+        bundlerUrl,
+        safeModulesVersion: '0.3.0',
+        ...(USE_TOKEN_PAYMASTER
+          ? {
+              paymasterUrl,
+              paymasterAddress,
+              paymasterToken: {
+                address: paymasterTokenAddress,
+              },
+              transferMaxFee: 100000,
+            }
+          : {
+              useNativeCoins: true,
+            }),
+      },
       chainId: WDK_SEPOLIA_CHAIN_ID,
       provider: rpcUrl,
       bundlerUrl,

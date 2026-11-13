@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { mobileAuthService } from '../services/authService';
+import { getApiBaseUrl } from '../config/api.js';
 
 export default function ProfileScreen({
   user,
@@ -280,9 +281,14 @@ export default function ProfileScreen({
             <Text style={styles.infoRowVal}>5 Minutes</Text>
           </View>
 
-          <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
+          <View style={styles.infoRow}>
             <Text style={styles.infoRowLabel}>Offline Capability</Text>
             <Text style={styles.infoRowVal}>{isOffline ? 'Offline Active' : 'Online / Synced'}</Text>
+          </View>
+
+          <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
+            <Text style={styles.infoRowLabel}>Backend Server</Text>
+            <Text style={[styles.infoRowVal, { fontSize: 11 }]}>{getApiBaseUrl()}</Text>
           </View>
         </View>
 

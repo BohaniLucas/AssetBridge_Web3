@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../config/api.js';
+import { API_BASE_URL, getApiBaseUrl } from '../config/api.js';
 import { sessionLockService } from './sessionLockService.js';
 
 const SESSION_KEY = 'assetbridge_mobile_auth_session';
@@ -102,7 +102,8 @@ const jsonRequest = async (path, body, accessToken, method) => {
   const fetchImpl = getFetch();
   let response;
   try {
-    response = await fetchImpl(`${API_BASE_URL}${path}`, {
+    const baseUrl = getApiBaseUrl ? getApiBaseUrl() : API_BASE_URL;
+    response = await fetchImpl(`${baseUrl}${path}`, {
       method: method || (body ? 'POST' : 'GET'),
       headers: {
         'Content-Type': 'application/json',
