@@ -9,7 +9,8 @@
         "expo-build-properties",
         {
           "android": {
-            "minSdkVersion": 29
+            "minSdkVersion": 29,
+            "usesCleartextTraffic": true
           }
         }
       ],
@@ -45,8 +46,6 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.NFC",
         "android.permission.CAMERA",
         "android.permission.NFC"
       ]
