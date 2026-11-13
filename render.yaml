@@ -1,39 +1,44 @@
 services:
   - type: web
-    name: assetbridge-web-api
+    name: interlink-api
     runtime: node
-    region: frankfurt
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node server.js
     plan: free
-    buildCommand: npm ci --prefix server && npm ci --prefix AssetBridge && VITE_API_URL=/api npm --prefix AssetBridge run build
-    startCommand: npm --prefix server start
     healthCheckPath: /api/health
     envVars:
-      - key: NODE_VERSION
-        value: 22.14.0
       - key: NODE_ENV
         value: production
-      - key: ENABLE_DEV_TEST_ACCOUNT
-        value: "false"
-      - key: VITE_API_URL
-        value: /api
-      - key: CLIENT_URL
-        fromService:
-          name: assetbridge-web-api
-          type: web
-          envVarKey: RENDER_EXTERNAL_URL
+      - key: PORT
+        value: 10000
       - key: SUPABASE_URL
-        sync: false
+        value: https://tbjeonntfbezvtlyhuvi.supabase.co
       - key: SUPABASE_ANON_KEY
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      - key: QUOTE_SIGNING_SECRET
-        generateValue: true
-      - key: PAYOUT_WEBHOOK_SECRET
-        generateValue: true
+      - key: FINNHUB_API_KEY
+        sync: false
+      - key: OPEN_ER_API_BASE_URL
+        value: https://open.er-api.com/v6/latest/USD
+      - key: BINANCE_API_BASE_URL
+        value: https://api.binance.com/api/v3
+      - key: BINANCE_WS_URL
+        value: wss://stream.binance.com:9443/ws
       - key: TETHER_NETWORK
         value: Sepolia
       - key: TETHER_RPC_URL
         value: https://rpc.sepolia.org
       - key: TETHER_USDT_CONTRACT_ADDRESS
-        value: 0x7169D38820dfd117C3FA1f22a697dBA58d90BA06
+        value: "0x7169D38820dfd117C3FA1f22a697dBA58d90BA06"
+      - key: QUOTE_SIGNING_SECRET
+        sync: false
+      - key: ADMIN_EMAILS
+        value: admin@assetbridge.africa,security@assetbridge.africa,malulekelucas04@gmail.com
+      - key: ENABLE_DEV_TEST_ACCOUNT
+        value: "true"
+      - key: OTP_PROVIDER_API_KEY_SECRETE
+        sync: false
+      - key: OTP_PROVIDER_API_KEY_SID
+        sync: false

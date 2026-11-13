@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { isSupabaseConfigured } from './services/supabaseService.js';
 import authRoutes from './routes/authRoutes.js';
@@ -20,6 +21,9 @@ import { sanitizeInputs } from './middlewares/validationMiddleware.js';
 dotenv.config();
 
 const app = express();
+// Enable trust proxy for Render, Heroku, and reverse proxy environments
+app.set('trust proxy', 1);
+
 const PORT = process.env.PORT || 5000;
 const WEB_DIST_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../AssetBridge/dist');
 
@@ -125,9 +129,8 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// In Render production, serve the Vite web app from the same origin as the API.
-// This keeps VITE_API_URL same-origin and avoids wildcard CORS configuration.
-if (process.env.NODE_ENV === 'production') {
+// In Render production, serve the Vite web app from the same origin as the API if built.
+if (process.env.NODE_ENV === 'production' && fs.existsSync(WEB_DIST_DIR)) {
   app.use(express.static(WEB_DIST_DIR));
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api/')) return next();
