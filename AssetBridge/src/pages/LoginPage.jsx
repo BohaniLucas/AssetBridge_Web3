@@ -69,12 +69,8 @@ export default function LoginPage({ onNavigate, onLoginSuccess }) {
         <div className="relative z-10 flex items-center justify-between w-full">
           {/* Brand Logo */}
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => onNavigate('landing')}>
-            <div className="w-9 h-9 rounded-xl bg-white text-gray-950 flex items-center justify-center font-black text-sm shadow-md">
-              <svg className="w-5 h-5 text-gray-950" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-              </svg>
-            </div>
-            <span className="text-xl font-bold tracking-tight text-white">AssetBridge</span>
+            <img src="/interlink-logo.png" alt="InterLink" className="w-9 h-9 object-contain" />
+            <span className="text-xl font-bold tracking-tight text-white">InterLink</span>
           </div>
 
           {/* Back to Website Link */}

@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { ArrowRight, Send, Users, TrendingUp, ShieldCheck, Zap, ArrowUpRight, CheckCircle2 } from 'lucide-react';
 
 export default function LandingPage({ onNavigate }) {
@@ -16,15 +16,11 @@ export default function LandingPage({ onNavigate }) {
       <header className="max-w-7xl mx-auto px-6 py-6 flex items-center justify-between">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => onNavigate('landing')}>
-            <div className="w-8 h-8 rounded-xl bg-gray-950 text-white flex items-center justify-center font-bold text-sm">
-              <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-              </svg>
-            </div>
-            <span className="font-extrabold text-lg tracking-tight text-gray-950">AssetBridge</span>
+            <img src="/interlink-logo.png" alt="InterLink" className="w-9 h-9 object-contain" />
+            <span className="font-extrabold text-lg tracking-tight text-gray-950">InterLink</span>
           </div>
           <span className="hidden md:inline-block text-xs text-gray-400 font-normal">
-            / hello@assetbridge.africa
+            / hello@interlink.africa
           </span>
         </div>
 
@@ -134,7 +130,7 @@ export default function LandingPage({ onNavigate }) {
               <div className="flex items-center justify-between text-xs font-semibold text-gray-800 mb-4">
                 <span className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>AssetBridge Wallet</span>
+                  <span>InterLink Wallet</span>
                 </span>
                 <span className="text-[11px] text-gray-400 font-mono">0x884a...12be</span>
               </div>
@@ -276,7 +272,8 @@ export default function LandingPage({ onNavigate }) {
       <footer className="border-t border-gray-100 py-10 text-center text-xs text-gray-400">
         <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-gray-950">AssetBridge</span>
+            <img src="/interlink-logo.png" alt="InterLink" className="w-5 h-5 object-contain" />
+            <span className="font-bold text-gray-950">InterLink</span>
             <span>· Own More. Trade Smarter. Invest Without Boundaries.</span>
           </div>
           <div className="flex items-center gap-6 text-gray-600 font-medium">

@@ -17,10 +17,10 @@ export default function Sidebar({ currentView, onNavigate, onLogout }) {
       <div className="flex flex-col items-center gap-6">
         <button
           onClick={() => onNavigate('dashboard')}
-          className="w-12 h-12 rounded-2xl bg-[#F6EEDF] text-[#141518] flex items-center justify-center font-black text-xl shadow-md hover:scale-105 transition"
-          title="AssetBridge Home"
+          className="w-12 h-12 flex items-center justify-center hover:scale-105 transition"
+          title="InterLink Home"
         >
-          <span className="tracking-tighter">AB</span>
+          <img src="/interlink-logo.png" alt="InterLink" className="w-10 h-10 object-contain" />
         </button>
 
         {/* Navigation Items */}

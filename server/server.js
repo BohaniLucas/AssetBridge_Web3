@@ -4,7 +4,6 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import { isSupabaseConfigured } from './services/supabaseService.js';
-
 import authRoutes from './routes/authRoutes.js';
 import potsRoutes from './routes/potsRoutes.js';
 import remittanceRoutes from './routes/remittanceRoutes.js';
@@ -138,8 +137,8 @@ const isTesting = process.env.NODE_ENV === 'test' ||
   (Boolean(process.argv[1]) && process.argv[1].includes('test'));
 
 if (!isTesting) {
-  app.listen(PORT, () => {
-    console.log(`[Security] AssetBridge hardened API running on port ${PORT}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[Security] AssetBridge hardened API running on http://0.0.0.0:${PORT}`);
     if (isSupabaseConfigured()) {
       console.log('[Config] Supabase environment variables loaded.');
     } else {
