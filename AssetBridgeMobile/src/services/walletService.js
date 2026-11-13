@@ -88,32 +88,17 @@ class MobileWalletService {
     }
   }
 
-  async transferUsdt({ recipient, amount, note = '' }) {
+  async transferUsdt({ senderUserId, recipient, amount, note = '' }) {
     return this.transfer({
-      senderUserId: 'current_user',
+      senderUserId,
       recipientAddressOrUsername: recipient,
       amountUsdt: amount,
       note,
     });
   }
 
-  async claimFaucet(userId) {
-    try {
-      const res = await fetch(`${API_BASE_URL}/wallet/faucet`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...await authHeaders() },
-        body: JSON.stringify({ userId, amountUsdt: 250 }),
-      });
-      const json = await res.json();
-      if (res.ok && json.data) return json.data;
-      throw new Error(json.message || 'Faucet request failed.');
-    } catch (error) {
-      throw new Error(`Test token faucet unavailable. No balance was added. ${error.message}`);
-    }
-  }
-
-  async getWallet(userId = 'demo_user') {
-    return this.getOrCreateWallet(userId).catch(() => null);
+  async getWallet(userId) {
+    return this.getOrCreateWallet(userId);
   }
 
   async getTransactions(userId) {
@@ -134,5 +119,4 @@ class MobileWalletService {
 
 export const mobileWalletService = new MobileWalletService();
 export const walletService = mobileWalletService;
-
 

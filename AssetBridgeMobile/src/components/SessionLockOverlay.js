@@ -32,7 +32,7 @@ export default function SessionLockOverlay({ visible, userEmail, onUnlocked, onS
     try {
       await mobileAuthService.reauthenticate(password);
       setPassword('');
-      onUnlocked();
+      await onUnlocked();
     } catch (err) {
       setErrorMsg(err.message || 'Incorrect password. Please try again.');
     } finally {
@@ -245,4 +245,3 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
-

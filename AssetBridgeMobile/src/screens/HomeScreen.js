@@ -17,7 +17,20 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { mobileWalletService } from '../services/walletService';
 import { mobileClaimService } from '../services/claimService';
 
-export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, onNavigate }) {
+export default function HomeScreen({
+  wallet,
+  walletStatus,
+  walletError,
+  walletExists,
+  balanceError,
+  balanceLoading,
+  onRefresh,
+  onCreateWallet,
+  onSaveWallet,
+  onUnlockWallet,
+  onTransfer,
+  onNavigate,
+}) {
   // Modals state
   const [showSendModal, setShowSendModal] = useState(false);
   const [showReceiveModal, setShowReceiveModal] = useState(false);
@@ -36,6 +49,10 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
   const [isSending, setIsSending] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [lastReceipt, setLastReceipt] = useState(null);
+  const [recoveryPhrase, setRecoveryPhrase] = useState('');
+  const [backupAcknowledged, setBackupAcknowledged] = useState(false);
+  const [walletActionLoading, setWalletActionLoading] = useState(false);
+  const [walletActionError, setWalletActionError] = useState('');
 
   // Send to Gogo (WhatsApp Escrow Link)
   const [claimZar, setClaimZar] = useState('400');
@@ -48,9 +65,7 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
   // Copy success indicator
   const [copied, setCopied] = useState(false);
 
-  const usdtBalance = wallet?.balanceUsdt != null && Number.isFinite(Number(wallet.balanceUsdt))
-    ? Number(wallet.balanceUsdt)
-    : null;
+  const formattedUsdtBalance = formatUsdtBalance(wallet?.balanceUsdt);
 
   useEffect(() => {
     let active = true;
@@ -62,7 +77,7 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
         if (active) setTransactions([]);
       });
     return () => { active = false; };
-  }, [wallet?.userId, wallet?.balanceUsdt]);
+  }, [wallet?.userId]);
 
   const handleCopy = () => {
     setCopied(true);
@@ -84,6 +99,65 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
   const handleBarcodeScanned = ({ data }) => {
     setShowScanner(false);
     Alert.alert('QR code scanned', data, [{ text: 'OK' }]);
+  };
+
+  const beginWalletCreation = async () => {
+    setWalletActionLoading(true);
+    setWalletActionError('');
+    try {
+      const phrase = await onCreateWallet();
+      setRecoveryPhrase(phrase);
+      setBackupAcknowledged(false);
+    } catch (error) {
+      setWalletActionError(error.message || 'Wallet setup could not be started.');
+    } finally {
+      setWalletActionLoading(false);
+    }
+  };
+
+  const confirmWalletCreation = async () => {
+    if (!backupAcknowledged || !recoveryPhrase) return;
+    setWalletActionLoading(true);
+    setWalletActionError('');
+    try {
+      await onSaveWallet(recoveryPhrase);
+      setRecoveryPhrase('');
+      setShowReceiveModal(false);
+      await onRefresh?.();
+    } catch (error) {
+      setWalletActionError(error.message || 'The wallet could not be saved.');
+    } finally {
+      setWalletActionLoading(false);
+    }
+  };
+
+  const handleUnlockWallet = async () => {
+    setWalletActionLoading(true);
+    setWalletActionError('');
+    try {
+      await onUnlockWallet();
+    } catch (error) {
+      setWalletActionError(error.message || 'The wallet could not be unlocked.');
+    } finally {
+      setWalletActionLoading(false);
+    }
+  };
+
+  const closeRecoveryPhrase = () => {
+    if (walletActionLoading) return;
+    setRecoveryPhrase('');
+    setBackupAcknowledged(false);
+    setWalletActionError('');
+  };
+
+  const walletStatusCopy = {
+    INITIALIZING: 'Connecting to the WDK wallet service…',
+    REINITIALIZING: 'Reconnecting to the WDK wallet service…',
+    NO_WALLET: 'No WDK wallet is set up on this device.',
+    LOCKED: walletExists ? 'Your WDK wallet is locked.' : 'No wallet is linked to this account on this device.',
+    ERROR: walletError || 'The WDK wallet could not be initialized.',
+    CONFIG_ERROR: walletError || 'Sepolia wallet configuration is incomplete.',
+    UNAVAILABLE: walletError || 'Wallet operations are unavailable on web.',
   };
 
   const handleReviewSend = () => {
@@ -128,7 +202,7 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
         <View style={styles.decorCircleBottom} />
 
         <View style={styles.portfolioHeader}>
-          <Text style={styles.portfolioLabel}>TOTAL BALANCE</Text>
+          <Text style={styles.portfolioLabel}>USDT BALANCE</Text>
           <View style={styles.sepoliaBadge}>
             <View style={styles.sepoliaDot} />
             <Text style={styles.sepoliaText}>SEPOLIA</Text>
@@ -136,15 +210,23 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
         </View>
 
         <View style={styles.balanceContainer}>
-          <Text style={styles.balanceCurrency}>$</Text>
+          <Text style={styles.balanceCurrency}>USDT</Text>
           <Text style={styles.balanceAmount}>
-            {usdtBalance == null ? '—' : usdtBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {formattedUsdtBalance == null
+              ? (balanceLoading ? '…' : '—')
+              : formattedUsdtBalance}
           </Text>
         </View>
 
         <View style={styles.profitRow}>
           <Ionicons name="information-circle-outline" size={15} color="#94A3B8" />
-          <Text style={styles.profitTimeframe}>{wallet?.address ? 'Network balance' : 'Connect a verified wallet to view your balance'}</Text>
+          <Text style={styles.profitTimeframe}>
+            {walletStatus === 'READY' && !balanceError
+              ? 'Live Sepolia network balance'
+              : balanceError
+                ? 'Balance unavailable — not a confirmed zero'
+                : 'Connect your WDK wallet to view its balance'}
+          </Text>
         </View>
 
         <View style={styles.addressBar}>
@@ -157,10 +239,51 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
         </View>
       </View>
 
+      {walletStatus !== 'READY' || balanceError ? (
+        <View style={styles.walletStatusCard}>
+          <Text style={styles.walletStatusText}>
+            {walletStatus === 'READY' ? balanceError : walletStatusCopy[walletStatus] || 'Wallet status unavailable.'}
+          </Text>
+          {walletStatus === 'NO_WALLET' || (walletStatus === 'LOCKED' && !walletExists) ? (
+            <TouchableOpacity
+              style={styles.walletActionButton}
+              onPress={beginWalletCreation}
+              disabled={walletActionLoading || !onCreateWallet}
+            >
+              {walletActionLoading
+                ? <ActivityIndicator color="#FFFFFF" />
+                : <Text style={styles.walletActionButtonText}>Create WDK wallet</Text>}
+            </TouchableOpacity>
+          ) : null}
+          {walletStatus === 'LOCKED' && walletExists ? (
+            <TouchableOpacity
+              style={styles.walletActionButton}
+              onPress={handleUnlockWallet}
+              disabled={walletActionLoading || !onUnlockWallet}
+            >
+              {walletActionLoading
+                ? <ActivityIndicator color="#FFFFFF" />
+                : <Text style={styles.walletActionButtonText}>Unlock wallet</Text>}
+            </TouchableOpacity>
+          ) : null}
+          {walletStatus === 'READY' && balanceError ? (
+            <TouchableOpacity style={styles.walletActionButton} onPress={onRefresh} disabled={balanceLoading}>
+              {balanceLoading
+                ? <ActivityIndicator color="#FFFFFF" />
+                : <Text style={styles.walletActionButtonText}>Retry balance</Text>}
+            </TouchableOpacity>
+          ) : null}
+          {walletActionError ? <Text style={styles.walletActionError}>{walletActionError}</Text> : null}
+          {walletError && walletStatus !== 'CONFIG_ERROR' ? (
+            <Text style={styles.walletActionError}>{walletError}</Text>
+          ) : null}
+        </View>
+      ) : null}
+
       
       <View style={[styles.actionGrid, styles.shadowSm]}>
         {[
-          { label: 'Deposit', icon: 'add', color: '#3B82F6', action: onFaucet },
+          { label: 'Receive', icon: 'download', color: '#3B82F6', action: () => setShowReceiveModal(true) },
           { label: 'Send', icon: 'paper-plane', color: '#10B981', action: () => { setSendStep(1); setShowSendModal(true); } },
           { label: 'Withdraw', icon: 'cash', color: '#F59E0B', action: () => onNavigate('markets') },
           { label: 'Qr Scan', icon: 'qr-code', color: '#6366F1', action: openScanner },
@@ -178,7 +301,7 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
         <View style={styles.moreActionsContainer}>
           <TouchableOpacity style={styles.moreActionBtn} onPress={() => setShowReceiveModal(true)}>
             <Ionicons name="qr-code-outline" size={20} color="#334155" />
-            <Text style={styles.moreActionText}>Receive QR</Text>
+            <Text style={styles.moreActionText}>Receive address</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.moreActionBtn} onPress={() => { setActiveClaim(null); setShowClaimModal(true); }}>
             <Ionicons name="logo-whatsapp" size={20} color="#16A34A" />
@@ -190,6 +313,61 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
           </TouchableOpacity>
         </View>
       )}
+
+      <Modal visible={Boolean(recoveryPhrase)} transparent animationType="slide" onRequestClose={closeRecoveryPhrase}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.sendSheet}>
+            <View style={styles.sendHeader}>
+              <Text style={styles.sendTitle}>Back up your wallet</Text>
+              <TouchableOpacity onPress={closeRecoveryPhrase} disabled={walletActionLoading}>
+                <Ionicons name="close" size={24} color="#334155" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.recoveryWarning}>
+              Write this phrase down and keep it offline. Anyone with it can control this wallet. AssetBridge will never ask you to share it.
+            </Text>
+            <Text selectable style={styles.recoveryPhrase}>{recoveryPhrase}</Text>
+            <TouchableOpacity
+              style={styles.recoveryCheck}
+              onPress={() => setBackupAcknowledged((value) => !value)}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: backupAcknowledged }}
+            >
+              <Ionicons
+                name={backupAcknowledged ? 'checkbox' : 'square-outline'}
+                size={22}
+                color={backupAcknowledged ? '#059669' : '#64748B'}
+              />
+              <Text style={styles.recoveryCheckText}>I have saved this recovery phrase somewhere safe.</Text>
+            </TouchableOpacity>
+            {walletActionError ? <Text style={styles.sendError}>{walletActionError}</Text> : null}
+            <TouchableOpacity
+              style={[styles.sendPrimaryBtn, !backupAcknowledged && styles.disabledButton]}
+              onPress={confirmWalletCreation}
+              disabled={!backupAcknowledged || walletActionLoading}
+            >
+              {walletActionLoading
+                ? <ActivityIndicator color="#FFFFFF" />
+                : <Text style={styles.sendPrimaryText}>Save wallet on this device</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showReceiveModal} transparent animationType="slide" onRequestClose={() => setShowReceiveModal(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.sendSheet}>
+            <View style={styles.sendHeader}>
+              <Text style={styles.sendTitle}>Receive USDT</Text>
+              <TouchableOpacity onPress={() => setShowReceiveModal(false)}>
+                <Ionicons name="close" size={24} color="#334155" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.recoveryWarning}>Only send Sepolia test tokens to this address.</Text>
+            <Text selectable style={styles.receiveAddress}>{wallet?.address || 'Unlock your WDK wallet to view its address.'}</Text>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={showSendModal} transparent animationType="slide" onRequestClose={() => setShowSendModal(false)}>
         <View style={styles.modalBackdrop}>
@@ -260,10 +438,12 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
             </View>
             <View style={styles.assetRowInfo}>
               <Text style={styles.assetRowName}>Tether USD</Text>
-              <Text style={styles.assetRowSub}>tUSDT</Text>
+              <Text style={styles.assetRowSub}>USDT on Sepolia</Text>
             </View>
             <View style={styles.assetRowValues}>
-            <Text style={styles.assetRowAmount}>{usdtBalance == null ? 'Unavailable' : `$${usdtBalance.toFixed(2)}`}</Text>
+            <Text style={styles.assetRowAmount}>
+              {formattedUsdtBalance == null ? 'Unavailable' : `${formattedUsdtBalance} USDT`}
+            </Text>
               <Text style={styles.assetRowChange}>Stablecoin</Text>
             </View>
           </View>
@@ -312,6 +492,19 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
       
     </ScrollView>
   );
+}
+
+function formatUsdtBalance(value) {
+  if (typeof value !== 'string' || !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) {
+    return null;
+  }
+
+  const [whole, fraction = ''] = value.split('.');
+  let cents = BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0').slice(0, 2));
+  if (fraction.charAt(2) >= '5') cents += 1n;
+  const displayedWhole = (cents / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const displayedCents = (cents % 100n).toString().padStart(2, '0');
+  return `${displayedWhole}.${displayedCents}`;
 }
 
 const styles = StyleSheet.create({
@@ -384,6 +577,17 @@ const styles = StyleSheet.create({
   actionBtn: { flex: 1, alignItems: 'center', paddingVertical: 12, gap: 8 },
   actionIconBox: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   actionBtnText: { color: '#334155', fontSize: 12, fontWeight: '700' },
+  walletStatusCard: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 18, padding: 16, marginHorizontal: 10, marginTop: 16 },
+  walletStatusText: { color: '#334155', fontSize: 13, lineHeight: 19 },
+  walletActionButton: { backgroundColor: '#0F172A', borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, paddingHorizontal: 16, marginTop: 12 },
+  walletActionButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  walletActionError: { color: '#DC2626', fontSize: 12, lineHeight: 18, marginTop: 10 },
+  recoveryWarning: { color: '#475569', fontSize: 14, lineHeight: 21, marginBottom: 14 },
+  recoveryPhrase: { backgroundColor: '#F8FAFC', borderRadius: 14, borderWidth: 1, borderColor: '#CBD5E1', color: '#0F172A', fontSize: 16, fontWeight: '700', lineHeight: 28, padding: 16, textAlign: 'center' },
+  recoveryCheck: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 18 },
+  recoveryCheckText: { color: '#334155', flex: 1, fontSize: 13, lineHeight: 19 },
+  disabledButton: { opacity: 0.5 },
+  receiveAddress: { backgroundColor: '#F8FAFC', borderRadius: 14, borderWidth: 1, borderColor: '#CBD5E1', color: '#0F172A', fontSize: 14, lineHeight: 22, padding: 16 },
   
   moreActionsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 16, padding: 16, borderRadius: 20, backgroundColor: '#FFFFFF' },
   moreActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F8FAFC', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 },

@@ -7,6 +7,9 @@ import { sessionLockService } from './sessionLockService';
 const SESSION_KEY = 'assetbridge_mobile_auth_session';
 
 const jsonRequest = async (path, body, accessToken) => {
+  if (!API_BASE_URL) {
+    throw new Error('The backend URL is not configured. Set EXPO_PUBLIC_API_URL and restart the app.');
+  }
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: body ? 'POST' : 'GET',
     headers: {
@@ -126,7 +129,6 @@ export const mobileAuthService = {
     }
     const updated = { user: data.user, token: data.token, refreshToken: data.refreshToken || session.refreshToken };
     await persistSession(updated);
-    await sessionLockService.unlock();
     return updated;
   },
 

@@ -1,12 +1,15 @@
-import { Platform } from 'react-native';
+export const API_BASE_URL = (process.env.EXPO_PUBLIC_API_URL || '').trim().replace(/\/$/, '');
+export const apiConfigurationError = API_BASE_URL
+  ? ''
+  : 'Set EXPO_PUBLIC_API_URL to the deployed API URL before using account services.';
 
-// Default to your local PC Wi-Fi IP so physical phones can reach the backend.
-// Android Emulator uses 10.0.2.2.
-const DEV_API_URL = 'http://192.168.0.240:5000/api';
-
-export const API_BASE_URL = (process.env.EXPO_PUBLIC_API_URL || DEV_API_URL).replace(/\/$/, '');
-
-// Sepolia verified Tether USDT ERC-20 contract
-export const SEPOLIA_USDT_CONTRACT = '0x7169D38820dfd117C3FA1f22a697dBA58d90BA06';
+export const SEPOLIA_USDT_CONTRACT = (process.env.EXPO_PUBLIC_SEPOLIA_USDT_CONTRACT_ADDRESS || '').trim();
+const usdtDecimalsValue = (process.env.EXPO_PUBLIC_SEPOLIA_USDT_DECIMALS || '').trim();
+const parsedUsdtDecimals = /^\d+$/.test(usdtDecimalsValue)
+  ? Number(usdtDecimalsValue)
+  : null;
+export const SEPOLIA_USDT_DECIMALS = Number.isSafeInteger(parsedUsdtDecimals)
+  && parsedUsdtDecimals <= 255
+  ? parsedUsdtDecimals
+  : null;
 export const SEPOLIA_CHAIN_ID = 11155111;
-

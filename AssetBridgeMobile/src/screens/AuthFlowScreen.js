@@ -95,7 +95,7 @@ function Field({ label, icon, value, onChangeText, ...props }) {
   );
 }
 
-export default function AuthFlowScreen({ onAuthenticated }) {
+export default function AuthFlowScreen({ onAuthenticated, configurationError = '' }) {
   const [screen, setScreen] = useState('welcome');
   const [introIndex, setIntroIndex] = useState(0);
   const [fullName, setFullName] = useState('');
@@ -267,6 +267,13 @@ export default function AuthFlowScreen({ onAuthenticated }) {
               <Text style={styles.formTitle}>{screen === 'login' ? 'Good to see you.' : 'Create your account.'}</Text>
               <Text style={styles.formSubtitle}>{screen === 'login' ? 'Sign in to continue to InterLink.' : 'A few details to get your account ready.'}</Text>
             </View>
+
+            {configurationError ? (
+              <View accessibilityRole="alert" style={styles.messageBox}>
+                <Ionicons name="alert-circle" size={18} color="#B91C1C" />
+                <Text style={styles.errorText}>{configurationError}</Text>
+              </View>
+            ) : null}
 
             {screen === 'signup' ? (
               <Field label="Your name" icon="person-outline" value={fullName} onChangeText={setFullName} placeholder="e.g. Thandi Mokoena" autoCapitalize="words" returnKeyType="next" />

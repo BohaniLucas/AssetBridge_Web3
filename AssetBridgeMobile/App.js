@@ -13,12 +13,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Network from 'expo-network';
-// import { WalletProvider } from '@tetherto/wdk-react-native-provider';
-import { bundle } from './.wdk';
-
-import { WdkAppProvider } from '@tetherto/wdk-react-native-core';
-import { Stack } from 'expo-router';
-import { wdkConfigs } from '../src/config/wdk';
 
 import HomeScreen from './src/screens/HomeScreen';
 import RemittanceScreen from './src/screens/RemittanceScreen';
@@ -31,8 +25,23 @@ import { mobileAuthService } from './src/services/authService';
 import { mobileWalletService } from './src/services/walletService';
 import { mobilePotsService } from './src/services/potsService';
 import { sessionLockService } from './src/services/sessionLockService';
+import { useWdkBridge } from './src/services/wdkBridgeService';
+import WdkRootProvider from './src/providers/WdkRootProvider';
+import { apiConfigurationError } from './src/config/api';
+import { wdkConfigurationError, wdkConfigs } from './src/config/wdk';
 
-// --- CUSTOM ANIMATED TAB BUTTON ---
+export default function App() {
+  if (Platform.OS !== 'web' && (wdkConfigurationError || !wdkConfigs)) {
+    return <AppContent walletConfigError={wdkConfigurationError} apiConfigError={apiConfigurationError} />;
+  }
+
+  return (
+    <WdkRootProvider wdkConfigs={wdkConfigs}>
+      <AppContent apiConfigError={apiConfigurationError} />
+    </WdkRootProvider>
+  );
+}
+
 const AnimatedTabButton = ({ item, isFocused, onPress }) => {
   const animatedWidth = useRef(new Animated.Value(isFocused ? 1 : 0)).current;
 
@@ -101,16 +110,29 @@ function OfflineBanner() {
   );
 }
 
-export default function App() {
+function AppContent({ walletConfigError = '', apiConfigError = '' }) {
   const networkState = Network.useNetworkState();
   const isOffline = networkState.isConnected === false || networkState.isInternetReachable === false;
+  const {
+    wdkStatus,
+    wdkWalletIds,
+    wdkError,
+    wdkAddress,
+    generateMnemonic,
+    saveWallet,
+    unlockWallet,
+    lockWallet,
+    getBalance,
+  } = useWdkBridge();
   const [currentTab, setCurrentTab] = useState('wallet');
-  const [wallet, setWallet] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isLocked, setIsLocked] = useState(false);
+  const [balanceUsdt, setBalanceUsdt] = useState(null);
+  const [balanceError, setBalanceError] = useState('');
+  const [balanceLoading, setBalanceLoading] = useState(false);
   const appStateRef = useRef(AppState.currentState);
+  const balanceRequestRef = useRef(0);
 
   useEffect(() => {
     let mounted = true;
@@ -159,29 +181,65 @@ export default function App() {
     { id: 'markets', label: 'Markets', activeIcon: 'analytics', inactiveIcon: 'analytics-outline' },
   ];
 
-  const loadWallet = async () => {
-    if (!session?.user?.id) return;
-    try {
-      const w = await mobileWalletService.getOrCreateWallet(session.user.id);
-      setWallet(w);
-    } catch {
-      setWallet(null);
+  const wallet = session?.user?.id
+    ? { userId: session.user.id, address: wdkAddress, balanceUsdt }
+    : null;
+  const walletExists = Boolean(session?.user?.id && wdkWalletIds.includes(session.user.id));
+
+  const refreshWalletBalance = React.useCallback(async () => {
+    const requestId = ++balanceRequestRef.current;
+    if (!session?.user?.id || wdkStatus !== 'READY') {
+      setBalanceUsdt(null);
+      setBalanceError('');
+      setBalanceLoading(false);
+      return;
     }
-  };
+
+    setBalanceLoading(true);
+    setBalanceError('');
+    try {
+      const liveBalance = await getBalance();
+      if (requestId === balanceRequestRef.current) setBalanceUsdt(liveBalance);
+    } catch (error) {
+      if (requestId === balanceRequestRef.current) {
+        setBalanceUsdt(null);
+        setBalanceError(error.message || 'The on-chain balance could not be loaded.');
+      }
+    } finally {
+      if (requestId === balanceRequestRef.current) setBalanceLoading(false);
+    }
+  }, [getBalance, session?.user?.id, wdkStatus]);
 
   useEffect(() => {
-    if (session?.user?.id) loadWallet();
-    else setWallet(null);
-  }, [session?.user?.id]);
+    const timer = setTimeout(refreshWalletBalance, 0);
+    return () => clearTimeout(timer);
+  }, [refreshWalletBalance, wdkAddress]);
+
+  useEffect(() => {
+    if (!isLocked || wdkStatus !== 'READY') return;
+    lockWallet().then((result) => {
+      if (!result.success) Alert.alert('Wallet lock failed', result.error);
+    }).catch((error) => Alert.alert('Wallet lock failed', error.message));
+  }, [isLocked, lockWallet, wdkStatus]);
 
   const handleSignOut = async () => {
-    const result = await mobileAuthService.signOut();
-    setSession(null);
-    setWallet(null);
-    setIsLocked(false);
-    setCurrentTab('wallet');
-    if (result?.warning) {
-      Alert.alert('Signed Out', result.warning);
+    try {
+      if (wdkStatus === 'READY') {
+        const lockResult = await lockWallet();
+        if (!lockResult.success) {
+          Alert.alert('Wallet lock failed', lockResult.error);
+          return;
+        }
+      }
+      const result = await mobileAuthService.signOut();
+      setSession(null);
+      setBalanceUsdt(null);
+      setBalanceError('');
+      setIsLocked(false);
+      setCurrentTab('wallet');
+      if (result?.warning) Alert.alert('Signed Out', result.warning);
+    } catch (error) {
+      Alert.alert('Sign out failed', error.message || 'The wallet could not be secured.');
     }
   };
 
@@ -213,7 +271,10 @@ export default function App() {
       <SafeAreaView style={styles.safeArea}>
         <StatusBar barStyle="light-content" backgroundColor="#0A0F1C" />
         {isOffline && <OfflineBanner />}
-        <AuthFlowScreen onAuthenticated={(nextSession) => setSession(nextSession)} />
+        <AuthFlowScreen
+          configurationError={apiConfigError}
+          onAuthenticated={(nextSession) => setSession(nextSession)}
+        />
       </SafeAreaView>
     );
   }
@@ -225,15 +286,31 @@ export default function App() {
     else setCurrentTab('wallet');
   };
 
+  const createWallet = async () => {
+    const result = await generateMnemonic();
+    if (!result.success) throw new Error(result.error);
+    return result.mnemonic;
+  };
+
+  const saveGeneratedWallet = async (mnemonic) => {
+    const result = await saveWallet(session.user.id, mnemonic);
+    if (!result.success) throw new Error(result.error);
+  };
+
+  const openWallet = async () => {
+    const result = await unlockWallet(session.user.id);
+    if (!result.success) throw new Error(result.error);
+  };
+
+  const restoreLockedSession = async () => {
+    if (walletExists) await openWallet();
+    await sessionLockService.unlock();
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#F1F4F8" />
       {isOffline && <OfflineBanner />}
-      
-       <WdkAppProvider bundle={{ bundle }} wdkConfigs={wdkConfigs}>
-        <Stack />
-        </WdkAppProvider>
-
       
       <View style={styles.topNav}>
         <View style={styles.brandGroup}>
@@ -262,20 +339,20 @@ export default function App() {
           }} />
         ) : currentTab === 'wallet' && (
           <HomeScreen 
-            wallet={wallet} 
-            onRefresh={async () => { setRefreshing(true); await loadWallet(); setRefreshing(false); }}
+            wallet={wallet}
+            walletStatus={walletConfigError ? 'CONFIG_ERROR' : wdkStatus}
+            walletError={walletConfigError || wdkError}
+            walletExists={walletExists}
+            balanceError={balanceError}
+            balanceLoading={balanceLoading}
+            onRefresh={refreshWalletBalance}
+            onCreateWallet={createWallet}
+            onSaveWallet={saveGeneratedWallet}
+            onUnlockWallet={openWallet}
             onTransfer={async (transfer) => {
               const result = await mobileWalletService.transfer(transfer);
-              setWallet(result.senderWallet || await mobileWalletService.getOrCreateWallet(wallet?.userId));
+              await refreshWalletBalance();
               return result;
-            }}
-            onFaucet={async () => {
-              try {
-                await mobileWalletService.claimFaucet(wallet?.userId);
-                await loadWallet();
-              } catch (error) {
-                Alert.alert('Test funds unavailable', error.message || 'No funds were added.');
-              }
             }}
             onNavigate={handleNavigate} 
           />
@@ -303,7 +380,7 @@ export default function App() {
       <SessionLockOverlay
         visible={Boolean(session && isLocked)}
         userEmail={session?.user?.email}
-        onUnlocked={() => sessionLockService.unlock()}
+        onUnlocked={restoreLockedSession}
         onSignOut={handleSignOut}
       />
     </SafeAreaView>
