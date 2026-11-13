@@ -1,7 +1,13 @@
 import express from 'express';
 import { requireAuth, requireAdmin } from '../middlewares/authMiddleware.js';
 import { financialFeatureUnavailable } from '../middlewares/featureUnavailable.js';
-import { getWallet, verifyBlockchainTx, verifySignature } from '../controllers/walletController.js';
+import {
+  getWallet,
+  verifyBlockchainTx,
+  verifySignature,
+  recordSelfCustodyPaymentStatus,
+  getSelfCustodyPaymentStatuses,
+} from '../controllers/walletController.js';
 
 const router = express.Router();
 
@@ -17,6 +23,8 @@ router.post('/faucet', financialFeatureUnavailable);
 
 router.post('/transfer', financialFeatureUnavailable);
 router.get('/:userId/transactions', financialFeatureUnavailable);
+router.post('/:userId/self-custody-payments', recordSelfCustodyPaymentStatus);
+router.get('/:userId/self-custody-payments', getSelfCustodyPaymentStatuses);
 router.post('/verify-tx', verifyBlockchainTx);
 router.post('/verify-signature', verifySignature);
 

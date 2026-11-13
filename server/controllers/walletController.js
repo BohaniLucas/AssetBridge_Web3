@@ -110,6 +110,40 @@ export const getTransactions = (req, res) => {
   }
 };
 
+export const recordSelfCustodyPaymentStatus = (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (!assertOwnerOrAdmin(req, userId)) {
+      return errorResponse(
+        res,
+        'Access denied: You can only record self-custody payment statuses for your own account.',
+        403
+      );
+    }
+    const record = walletService.recordSelfCustodyPaymentStatus(req.user.id, req.body);
+    return successResponse(res, record, 'Self-custody payment status recorded');
+  } catch (err) {
+    return errorResponse(res, err.message, err.statusCode || 400);
+  }
+};
+
+export const getSelfCustodyPaymentStatuses = (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (!assertOwnerOrAdmin(req, userId)) {
+      return errorResponse(
+        res,
+        'Access denied: You can only query your own self-custody payment statuses.',
+        403
+      );
+    }
+    const records = walletService.getSelfCustodyPaymentStatuses(req.user.id);
+    return successResponse(res, records, 'Self-custody payment statuses retrieved');
+  } catch (err) {
+    return errorResponse(res, err.message, 500);
+  }
+};
+
 export const depositFaucet = (req, res) => {
   try {
     if (req.body.userId && !assertOwnerOrAdmin(req, req.body.userId)) {

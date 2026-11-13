@@ -3,6 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { isSupabaseConfigured } from './services/supabaseService.js';
 import authRoutes from './routes/authRoutes.js';
 import potsRoutes from './routes/potsRoutes.js';
@@ -19,6 +21,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const WEB_DIST_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../AssetBridge/dist');
 
 // 1. Security Headers via Helmet
 app.use(helmet({
@@ -121,6 +124,18 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// In Render production, serve the Vite web app from the same origin as the API.
+// This keeps VITE_API_URL same-origin and avoids wildcard CORS configuration.
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(WEB_DIST_DIR));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/')) return next();
+    res.sendFile(path.join(WEB_DIST_DIR, 'index.html'), (error) => {
+      if (error) next(error);
+    });
+  });
+}
 
 // Centralized error handling middleware
 app.use((err, req, res, next) => {

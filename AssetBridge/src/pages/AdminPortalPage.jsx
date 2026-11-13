@@ -424,7 +424,7 @@ export default function AdminPortalPage({ adminUser, onAdminLogout, onNavigate }
                   <div className="rounded-2xl bg-white border border-slate-200/70 p-4 shadow-sm flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5">
                       <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-xs">
-                        ⚡
+                        VOL
                       </div>
                       <div>
                         <span className="block text-xs font-bold text-slate-900">24h Volume</span>
@@ -445,7 +445,7 @@ export default function AdminPortalPage({ adminUser, onAdminLogout, onNavigate }
                   <div className="rounded-2xl bg-white border border-slate-200/70 p-4 shadow-sm flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5">
                       <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-xs">
-                        ⛓️
+                        GAS
                       </div>
                       <div>
                         <span className="block text-xs font-bold text-slate-900">Sepolia Gas</span>

@@ -54,7 +54,7 @@ const CORRIDOR_CATALOG = [
     currencyName: 'Tether USD (Sepolia Testnet)',
     symbol: 'USDT',
     decimals: 6,
-    flag: '🌐',
+    flag: 'GLOBAL',
     region: 'App-to-App',
     rails: [
       {
@@ -77,7 +77,7 @@ const CORRIDOR_CATALOG = [
     currencyName: 'South African Rand',
     symbol: 'R',
     decimals: 2,
-    flag: '🇿🇦',
+    flag: 'ZA',
     region: 'Africa',
     rails: [
       {
@@ -114,7 +114,7 @@ const CORRIDOR_CATALOG = [
     currencyName: 'Kenyan Shilling',
     symbol: 'KSh',
     decimals: 2,
-    flag: '🇰🇪',
+    flag: 'KE',
     region: 'Africa',
     rails: [
       {
@@ -137,7 +137,7 @@ const CORRIDOR_CATALOG = [
     currencyName: 'Nigerian Naira',
     symbol: '₦',
     decimals: 2,
-    flag: '🇳🇬',
+    flag: 'NG',
     region: 'Africa',
     rails: [
       {
@@ -160,7 +160,7 @@ const CORRIDOR_CATALOG = [
     currencyName: 'Ghanaian Cedi',
     symbol: 'GH₵',
     decimals: 2,
-    flag: '🇬🇭',
+    flag: 'GH',
     region: 'Africa',
     rails: [
       {
@@ -183,7 +183,7 @@ const CORRIDOR_CATALOG = [
     currencyName: 'British Pound Sterling',
     symbol: '£',
     decimals: 2,
-    flag: '🇬🇧',
+    flag: 'GB',
     region: 'Europe & UK',
     rails: [
       {
@@ -206,7 +206,7 @@ const CORRIDOR_CATALOG = [
     currencyName: 'Euro',
     symbol: '€',
     decimals: 2,
-    flag: '🇪🇺',
+    flag: 'EU',
     region: 'Europe & UK',
     rails: [
       {

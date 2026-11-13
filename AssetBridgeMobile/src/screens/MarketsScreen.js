@@ -12,9 +12,11 @@ import {
   RefreshControl,
   SafeAreaView,
   Platform,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { mobileMarketService } from '../services/marketService';
+import { portfolioService } from '../services/portfolioService';
 
 const CATEGORIES = [
   { id: 'all', label: 'All' },
@@ -54,7 +56,7 @@ function formatVolume(vol) {
   return `$${num.toFixed(2)}`;
 }
 
-export default function MarketsScreen() {
+export default function MarketsScreen({ wallet, currentUser, onNavigate }) {
   const [assets, setAssets] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -69,6 +71,106 @@ export default function MarketsScreen() {
   const [selectedRange, setSelectedRange] = useState('24h');
   const [historyData, setHistoryData] = useState(null);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+
+  // In-market Buy/Sell Trading State
+  const [tradeModalVisible, setTradeModalVisible] = useState(false);
+  const [tradeType, setTradeType] = useState('buy'); // 'buy' | 'sell'
+  const [tradeInput, setTradeInput] = useState('');
+  const [tradeError, setTradeError] = useState('');
+  const [isTrading, setIsTrading] = useState(false);
+  const [userHolding, setUserHolding] = useState(null);
+
+  const userId = currentUser?.id || wallet?.userId;
+  const usdtBalance = Number(wallet?.balanceUsdt || 0);
+
+  const checkUserHolding = useCallback(async (sym) => {
+    if (!userId || !sym) {
+      setUserHolding(null);
+      return;
+    }
+    try {
+      const p = await portfolioService.getPortfolio(userId);
+      const found = p.holdings?.find((h) => h.symbol.toUpperCase() === sym.toUpperCase());
+      setUserHolding(found || null);
+    } catch {
+      setUserHolding(null);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    if (selectedAsset?.symbol) {
+      checkUserHolding(selectedAsset.symbol);
+    }
+  }, [selectedAsset, checkUserHolding]);
+
+  const handleOpenTrade = (type) => {
+    setTradeType(type);
+    setTradeInput('');
+    setTradeError('');
+    if (type === 'sell' && (!userHolding || userHolding.quantity <= 0)) {
+      Alert.alert(
+        'No Position Found',
+        `You do not currently hold any ${selectedAsset.symbol}. Buy some first to add it to your portfolio.`
+      );
+      return;
+    }
+    setTradeModalVisible(true);
+  };
+
+  const handleExecuteTrade = async () => {
+    setTradeError('');
+    const num = Number(tradeInput);
+    if (!Number.isFinite(num) || num <= 0) {
+      return setTradeError('Please enter an amount greater than 0.');
+    }
+    const price = Number(selectedAsset?.price);
+    if (!price || price <= 0) {
+      return setTradeError('Live price unavailable for this asset.');
+    }
+
+    setIsTrading(true);
+    try {
+      if (tradeType === 'buy') {
+        if (num > usdtBalance) {
+          throw new Error(
+            `Insufficient USDT balance. You have $${usdtBalance.toFixed(2)} available.`
+          );
+        }
+        await portfolioService.buyAsset({
+          userId,
+          asset: selectedAsset,
+          amountUsdt: num,
+        });
+        setTradeModalVisible(false);
+        Alert.alert(
+          'Purchase Executed',
+          `Successfully bought ${(num / price).toFixed(4)} ${selectedAsset.symbol} for $${num.toFixed(2)} USDT.`
+        );
+      } else {
+        if (num > (userHolding?.quantity || 0) + 0.000001) {
+          throw new Error(
+            `Cannot sell more than your available balance (${(userHolding?.quantity || 0).toFixed(4)}).`
+          );
+        }
+        const res = await portfolioService.sellAsset({
+          userId,
+          symbol: selectedAsset.symbol,
+          quantity: num,
+          currentPrice: price,
+        });
+        setTradeModalVisible(false);
+        Alert.alert(
+          'Sale Confirmed',
+          `Successfully sold ${num.toFixed(4)} ${selectedAsset.symbol} for $${res.proceedsUsdt.toFixed(2)} USDT.`
+        );
+      }
+      await checkUserHolding(selectedAsset.symbol);
+    } catch (err) {
+      setTradeError(err.message || 'Trade execution failed.');
+    } finally {
+      setIsTrading(false);
+    }
+  };
 
   // Load Markets
   const loadMarkets = useCallback(async (cat = selectedCategory, isPull = false) => {
@@ -568,12 +670,32 @@ export default function MarketsScreen() {
                   </View>
                 </View>
 
+                {/* Holding Status Pill */}
+                {userHolding && userHolding.quantity > 0 && (
+                  <View style={styles.holdingStatusPill}>
+                    <Ionicons name="briefcase-outline" size={14} color="#059669" />
+                    <Text style={styles.holdingStatusText}>
+                      You hold {Number(userHolding.quantity).toFixed(4)} {selectedAsset.symbol}
+                    </Text>
+                  </View>
+                )}
+
                 {/* Actions */}
                 <View style={styles.actionButtonsRow}>
-                  <TouchableOpacity style={[styles.tradeActionBtn, styles.tradeActionBtnBuy]} activeOpacity={0.8}>
-                    <Text style={styles.tradeActionBtnText}>Buy {selectedAsset.baseSymbol || selectedAsset.symbol}</Text>
+                  <TouchableOpacity
+                    style={[styles.tradeActionBtn, styles.tradeActionBtnBuy]}
+                    activeOpacity={0.8}
+                    onPress={() => handleOpenTrade('buy')}
+                  >
+                    <Text style={styles.tradeActionBtnText}>
+                      Buy {selectedAsset.baseSymbol || selectedAsset.symbol}
+                    </Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.tradeActionBtn, styles.tradeActionBtnSell]} activeOpacity={0.8}>
+                  <TouchableOpacity
+                    style={[styles.tradeActionBtn, styles.tradeActionBtnSell]}
+                    activeOpacity={0.8}
+                    onPress={() => handleOpenTrade('sell')}
+                  >
                     <Text style={styles.tradeActionBtnText}>Sell</Text>
                   </TouchableOpacity>
                 </View>
@@ -582,6 +704,109 @@ export default function MarketsScreen() {
               </ScrollView>
             </SafeAreaView>
           )}
+        </Modal>
+
+        {/* IN-MARKET TRADE MODAL (BUY / SELL) */}
+        <Modal
+          visible={tradeModalVisible}
+          animationType="fade"
+          transparent
+          onRequestClose={() => setTradeModalVisible(false)}
+        >
+          <View style={styles.tradeModalOverlay}>
+            <View style={styles.tradeModalSheet}>
+              <View style={styles.tradeModalHeader}>
+                <Text style={styles.tradeModalTitle}>
+                  {tradeType === 'buy' ? 'Buy' : 'Sell'} {selectedAsset?.symbol}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setTradeModalVisible(false)}
+                  style={styles.tradeModalCloseBtn}
+                >
+                  <Ionicons name="close" size={18} color="#0A0F1C" />
+                </TouchableOpacity>
+              </View>
+
+              {tradeError ? (
+                <View style={styles.tradeErrorBox}>
+                  <Ionicons name="alert-circle" size={16} color="#DC2626" />
+                  <Text style={styles.tradeErrorText}>{tradeError}</Text>
+                </View>
+              ) : null}
+
+              <View style={styles.tradePriceCard}>
+                <Text style={styles.tradePriceLabel}>Market Price</Text>
+                <Text style={styles.tradePriceVal}>
+                  {formatPrice(selectedAsset?.price)}
+                </Text>
+                <Text style={styles.tradePriceSub}>
+                  {tradeType === 'buy'
+                    ? `Available: $${usdtBalance.toFixed(2)} USDT`
+                    : `Holdings: ${Number(userHolding?.quantity || 0).toFixed(4)} ${selectedAsset?.symbol}`}
+                </Text>
+              </View>
+
+              <View style={styles.tradeInputSection}>
+                <Text style={styles.tradeInputLabel}>
+                  {tradeType === 'buy' ? 'USDT to Spend' : `Quantity to Sell (${selectedAsset?.symbol})`}
+                </Text>
+                <View style={styles.tradeInputWrap}>
+                  {tradeType === 'buy' && <Text style={styles.tradeInputPrefix}>$</Text>}
+                  <TextInput
+                    style={styles.tradeTextInput}
+                    value={tradeInput}
+                    onChangeText={setTradeInput}
+                    placeholder="0.00"
+                    placeholderTextColor="#94A3B8"
+                    keyboardType="numeric"
+                  />
+                  <Text style={styles.tradeInputSuffix}>
+                    {tradeType === 'buy' ? 'USDT' : selectedAsset?.symbol}
+                  </Text>
+                </View>
+              </View>
+
+              {Number(tradeInput) > 0 && selectedAsset?.price > 0 && (
+                <View style={styles.tradeEstimateBox}>
+                  <Text style={styles.tradeEstimateLabel}>
+                    {tradeType === 'buy' ? 'You will receive:' : 'Estimated USDT proceeds:'}
+                  </Text>
+                  <Text style={styles.tradeEstimateVal}>
+                    {tradeType === 'buy'
+                      ? `${(Number(tradeInput) / Number(selectedAsset.price)).toFixed(4)} ${selectedAsset.symbol}`
+                      : `$${(Number(tradeInput) * Number(selectedAsset.price)).toFixed(2)} USDT`}
+                  </Text>
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={[
+                  styles.tradeSubmitBtn,
+                  tradeType === 'sell' && styles.tradeSubmitBtnSell,
+                  isTrading && { opacity: 0.7 },
+                ]}
+                onPress={handleExecuteTrade}
+                disabled={isTrading}
+                activeOpacity={0.8}
+              >
+                {isTrading ? (
+                  <ActivityIndicator
+                    size="small"
+                    color={tradeType === 'buy' ? '#0A0F1C' : '#FFFFFF'}
+                  />
+                ) : (
+                  <Text
+                    style={[
+                      styles.tradeSubmitBtnText,
+                      tradeType === 'sell' && styles.tradeSubmitBtnTextSell,
+                    ]}
+                  >
+                    Confirm {tradeType === 'buy' ? 'Purchase' : 'Sale'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
         </Modal>
       </View>
     </SafeAreaView>
@@ -1143,5 +1368,178 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '800',
+  },
+  portfolioNavBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+  },
+  portfolioNavBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  holdingStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#ECFDF5',
+    padding: 10,
+    borderRadius: 12,
+    marginBottom: 14,
+  },
+  holdingStatusText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  tradeModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(10, 15, 28, 0.75)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  tradeModalSheet: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 20,
+  },
+  tradeModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  tradeModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0A0F1C',
+  },
+  tradeModalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tradeErrorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF2F2',
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  tradeErrorText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#DC2626',
+    flex: 1,
+  },
+  tradePriceCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 14,
+    alignItems: 'center',
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  tradePriceLabel: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  tradePriceVal: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#0A0F1C',
+    marginTop: 2,
+  },
+  tradePriceSub: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#059669',
+    marginTop: 2,
+  },
+  tradeInputSection: {
+    marginBottom: 14,
+  },
+  tradeInputLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
+    marginBottom: 6,
+  },
+  tradeInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 48,
+    backgroundColor: '#F8FAFC',
+  },
+  tradeInputPrefix: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0A0F1C',
+    marginRight: 4,
+  },
+  tradeTextInput: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0A0F1C',
+  },
+  tradeInputSuffix: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  tradeEstimateBox: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 14,
+  },
+  tradeEstimateLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#065F46',
+  },
+  tradeEstimateVal: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#059669',
+  },
+  tradeSubmitBtn: {
+    backgroundColor: '#00E676',
+    borderRadius: 14,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tradeSubmitBtnSell: {
+    backgroundColor: '#DC2626',
+  },
+  tradeSubmitBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0A0F1C',
+  },
+  tradeSubmitBtnTextSell: {
+    color: '#FFFFFF',
   },
 });

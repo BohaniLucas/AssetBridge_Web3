@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: assetbridge-web-api
+    runtime: node
+    region: frankfurt
+    plan: free
+    buildCommand: npm ci --prefix server && npm ci --prefix AssetBridge && VITE_API_URL=/api npm --prefix AssetBridge run build
+    startCommand: npm --prefix server start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.14.0
+      - key: NODE_ENV
+        value: production
+      - key: ENABLE_DEV_TEST_ACCOUNT
+        value: "false"
+      - key: VITE_API_URL
+        value: /api
+      - key: CLIENT_URL
+        fromService:
+          name: assetbridge-web-api
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: QUOTE_SIGNING_SECRET
+        generateValue: true
+      - key: PAYOUT_WEBHOOK_SECRET
+        generateValue: true
+      - key: TETHER_NETWORK
+        value: Sepolia
+      - key: TETHER_RPC_URL
+        value: https://rpc.sepolia.org
+      - key: TETHER_USDT_CONTRACT_ADDRESS
+        value: 0x7169D38820dfd117C3FA1f22a697dBA58d90BA06

@@ -23,11 +23,11 @@ const INITIAL_POTS = [
     inviteCode: 'STOK-FRND-8821',
     description: 'Monthly rotation between 5 college friends for emergency & bulk savings',
     members: [
-      { id: 'm1', name: 'Thandi', avatar: '👩🏾', paid: true, payoutOrder: 1, paidAt: '2026-11-08T10:14:00Z', txHash: '0x3a9e4726bf6201cba64f89d34e21a7c5b08df1278149e6fbc24a91083de21c9a' },
-      { id: 'm2', name: 'Sipho', avatar: '👨🏾', paid: true, payoutOrder: 2, paidAt: '2026-11-08T11:20:00Z', txHash: '0x9b1d59103e5c9a1b4d0812746bc3e2849f1a23847e908123456789abcdef0123' },
-      { id: 'm3', name: 'Lerato', avatar: '👩🏽', paid: true, payoutOrder: 3, paidAt: '2026-11-09T08:05:00Z', txHash: '0x7e2a90103e5c9a1b4d0812746bc3e2849f1a23847e908123456789abcdef4411' },
-      { id: 'm4', name: 'Ayo', avatar: '👨🏿', paid: true, payoutOrder: 4, paidAt: '2026-11-09T14:30:00Z', txHash: '0x1d4e88fa3e5c9a1b4d0812746bc3e2849f1a23847e908123456789abcdef9922' },
-      { id: 'm5', name: 'You', avatar: '🙋🏾‍♂️', paid: false, payoutOrder: 5, paidAt: null, txHash: null, isUserSlot: true },
+      { id: 'm1', name: 'Thandi', avatar: 'av-1', paid: true, payoutOrder: 1, paidAt: '2026-11-08T10:14:00Z', txHash: '0x3a9e4726bf6201cba64f89d34e21a7c5b08df1278149e6fbc24a91083de21c9a' },
+      { id: 'm2', name: 'Sipho', avatar: 'av-2', paid: true, payoutOrder: 2, paidAt: '2026-11-08T11:20:00Z', txHash: '0x9b1d59103e5c9a1b4d0812746bc3e2849f1a23847e908123456789abcdef0123' },
+      { id: 'm3', name: 'Lerato', avatar: 'av-3', paid: true, payoutOrder: 3, paidAt: '2026-11-09T08:05:00Z', txHash: '0x7e2a90103e5c9a1b4d0812746bc3e2849f1a23847e908123456789abcdef4411' },
+      { id: 'm4', name: 'Ayo', avatar: 'av-4', paid: true, payoutOrder: 4, paidAt: '2026-11-09T14:30:00Z', txHash: '0x1d4e88fa3e5c9a1b4d0812746bc3e2849f1a23847e908123456789abcdef9922' },
+      { id: 'm5', name: 'You', avatar: 'av-user', paid: false, payoutOrder: 5, paidAt: null, txHash: null, isUserSlot: true },
     ],
     history: [
       {
@@ -55,11 +55,11 @@ const INITIAL_POTS = [
     inviteCode: 'CHAM-TECH-1044',
     description: 'Group investment pot co-purchasing tokenised US tech equities (tAAPL)',
     members: [
-      { id: 'm1', name: 'Lucas', avatar: '👨🏾‍💻', paid: true, payoutOrder: 1, voteApproved: true },
-      { id: 'm2', name: 'Nhlakanipho', avatar: '👨🏾‍🔬', paid: true, payoutOrder: 2, voteApproved: true },
-      { id: 'm3', name: 'Rorisang', avatar: '👩🏾‍💼', paid: true, payoutOrder: 3, voteApproved: true },
-      { id: 'm4', name: 'Amara', avatar: '👩🏾', paid: true, payoutOrder: 4, voteApproved: true },
-      { id: 'm5', name: 'You', avatar: '🙋🏾‍♂️', paid: false, payoutOrder: 5, voteApproved: false, isUserSlot: true },
+      { id: 'm1', name: 'Lucas', avatar: 'av-1', paid: true, payoutOrder: 1, voteApproved: true },
+      { id: 'm2', name: 'Nhlakanipho', avatar: 'av-2', paid: true, payoutOrder: 2, voteApproved: true },
+      { id: 'm3', name: 'Rorisang', avatar: 'av-3', paid: true, payoutOrder: 3, voteApproved: true },
+      { id: 'm4', name: 'Amara', avatar: 'av-4', paid: true, payoutOrder: 4, voteApproved: true },
+      { id: 'm5', name: 'You', avatar: 'av-user', paid: false, payoutOrder: 5, voteApproved: false, isUserSlot: true },
     ],
     history: [
       {
@@ -141,11 +141,11 @@ class PotService {
       inviteCode: `POT-${Math.random().toString(36).substring(2, 6).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`,
       description: potData.description || 'Community savings & investment pot',
       members: [
-        { id: 'm1', name: `${creatorName} (Admin)`, avatar: '👑', paid: false, payoutOrder: 1, userId: creatorUserId, isUserSlot: true },
-        { id: 'm2', name: 'Awaiting Member 2', avatar: '⏳', paid: false, payoutOrder: 2 },
-        { id: 'm3', name: 'Awaiting Member 3', avatar: '⏳', paid: false, payoutOrder: 3 },
-        { id: 'm4', name: 'Awaiting Member 4', avatar: '⏳', paid: false, payoutOrder: 4 },
-        { id: 'm5', name: 'Awaiting Member 5', avatar: '⏳', paid: false, payoutOrder: 5 },
+        { id: 'm1', name: `${creatorName} (Admin)`, avatar: 'av-admin', paid: false, payoutOrder: 1, userId: creatorUserId, isUserSlot: true },
+        { id: 'm2', name: 'Awaiting Member 2', avatar: 'av-pending', paid: false, payoutOrder: 2 },
+        { id: 'm3', name: 'Awaiting Member 3', avatar: 'av-pending', paid: false, payoutOrder: 3 },
+        { id: 'm4', name: 'Awaiting Member 4', avatar: 'av-pending', paid: false, payoutOrder: 4 },
+        { id: 'm5', name: 'Awaiting Member 5', avatar: 'av-pending', paid: false, payoutOrder: 5 },
       ],
       history: [
         {
@@ -323,7 +323,7 @@ class PotService {
 
     openSlot.name = userName;
     openSlot.userId = userId;
-    openSlot.avatar = '🙋🏾';
+    openSlot.avatar = 'av-user';
     this.savePots();
 
     walletService.logAudit('STOKVEL_JOINED', userId, { potId: pot.id, inviteCode });

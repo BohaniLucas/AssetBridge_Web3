@@ -129,11 +129,11 @@ export const INITIAL_STOKVEL_POTS = [
     currentRound: 1,
     totalRounds: 5,
     members: [
-      { id: '1', name: 'Thandi', avatar: '👩🏾', paid: true, payoutOrder: 1, recipient: true },
-      { id: '2', name: 'Sipho', avatar: '👨🏾', paid: true, payoutOrder: 2, recipient: false },
-      { id: '3', name: 'Lerato', avatar: '👩🏽', paid: true, payoutOrder: 3, recipient: false },
-      { id: '4', name: 'Ayo', avatar: '👨🏿', paid: true, payoutOrder: 4, recipient: false },
-      { id: '5', name: 'You', avatar: '🙋🏾‍♂️', paid: false, payoutOrder: 5, recipient: false, isUser: true },
+      { id: '1', name: 'Thandi', avatar: 'av-1', paid: true, payoutOrder: 1, recipient: true },
+      { id: '2', name: 'Sipho', avatar: 'av-2', paid: true, payoutOrder: 2, recipient: false },
+      { id: '3', name: 'Lerato', avatar: 'av-3', paid: true, payoutOrder: 3, recipient: false },
+      { id: '4', name: 'Ayo', avatar: 'av-4', paid: true, payoutOrder: 4, recipient: false },
+      { id: '5', name: 'You', avatar: 'av-user', paid: false, payoutOrder: 5, recipient: false, isUser: true },
     ],
     payoutHistory: [
       { round: 0, date: 'Setup', beneficiary: 'Tether Escrow Initialized', amount: '$0', tx: '0x8f2d59103e5c9a1b4d0812746bc3e2849f1a23847e908123456789abcdef0123' }
@@ -152,11 +152,11 @@ export const INITIAL_STOKVEL_POTS = [
     currentRound: 2,
     totalRounds: 12,
     members: [
-      { id: '1', name: 'Lucas M.', avatar: '👨🏾‍💻', paid: true, payoutOrder: 1, votes: 'Approved' },
-      { id: '2', name: 'Nhlakanipho X.', avatar: '👨🏾‍🔬', paid: true, payoutOrder: 2, votes: 'Approved' },
-      { id: '3', name: 'Rorisang M.', avatar: '👩🏾‍💼', paid: true, payoutOrder: 3, votes: 'Approved' },
-      { id: '4', name: 'Thandi', avatar: '👩🏾', paid: true, payoutOrder: 4, votes: 'Approved' },
-      { id: '5', name: 'You', avatar: '🙋🏾‍♂️', paid: false, payoutOrder: 5, votes: 'Pending', isUser: true },
+      { id: '1', name: 'Lucas M.', avatar: 'av-1', paid: true, payoutOrder: 1, votes: 'Approved' },
+      { id: '2', name: 'Nhlakanipho X.', avatar: 'av-2', paid: true, payoutOrder: 2, votes: 'Approved' },
+      { id: '3', name: 'Rorisang M.', avatar: 'av-3', paid: true, payoutOrder: 3, votes: 'Approved' },
+      { id: '4', name: 'Thandi', avatar: 'av-4', paid: true, payoutOrder: 4, votes: 'Approved' },
+      { id: '5', name: 'You', avatar: 'av-user', paid: false, payoutOrder: 5, votes: 'Pending', isUser: true },
     ],
     payoutHistory: [
       { round: 1, date: 'Last Month', beneficiary: '1.09 tAAPL co-purchased', amount: '$250', tx: '0x3a9e4726bf6201cba64f89d34e21a7c5b08df1278149e6fbc24a91083de21c9a' }

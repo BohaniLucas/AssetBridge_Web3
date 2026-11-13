@@ -403,7 +403,9 @@ export default function RemittanceScreen() {
           onPress={() => setShowCorridorModal(true)}
         >
           <View style={styles.destLeft}>
-            <Text style={styles.destFlag}>{currentCorridor?.flag || '🌐'}</Text>
+            <View style={styles.destIsoBadge}>
+              <Text style={styles.destIsoBadgeText}>{currentCorridor?.isoCountry || 'GLOBAL'}</Text>
+            </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.destCountry}>
                 {currentCorridor?.country || 'Loading…'} ({currentCorridor?.currency || '—'})
@@ -447,9 +449,12 @@ export default function RemittanceScreen() {
 
             {verifiedRecipient && (
               <View style={styles.verifiedBox}>
-                <Text style={styles.verifiedTitle}>
-                  ✓ Verified: {verifiedRecipient.displayName} ({verifiedRecipient.username})
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="checkmark-circle" size={16} color="#059669" />
+                  <Text style={styles.verifiedTitle}>
+                    Verified: {verifiedRecipient.displayName} ({verifiedRecipient.username})
+                  </Text>
+                </View>
                 <Text style={styles.verifiedSub}>
                   Rail: {verifiedRecipient.settlementAsset} ({verifiedRecipient.settlementNetwork})
                 </Text>
@@ -613,7 +618,7 @@ export default function RemittanceScreen() {
             onPress={() => setRiskAcknowledged(!riskAcknowledged)}
           >
             <View style={[styles.checkbox, riskAcknowledged && styles.checkboxChecked]}>
-              {riskAcknowledged && <Text style={styles.checkboxMark}>✓</Text>}
+              {riskAcknowledged && <Ionicons name="checkmark" size={14} color="#0A0F1C" />}
             </View>
             <Text style={styles.checkboxText}>
               I have verified the recipient’s identity, reviewed the fee and rate, and understand that on-chain transfers are irreversible once funded.
@@ -784,7 +789,7 @@ export default function RemittanceScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Select Destination Corridor</Text>
               <TouchableOpacity onPress={() => setShowCorridorModal(false)}>
-                <Text style={styles.closeBtnText}>✕</Text>
+                <Ionicons name="close" size={20} color="#0A0F1C" />
               </TouchableOpacity>
             </View>
             <ScrollView style={{ maxHeight: 400 }}>
@@ -802,7 +807,9 @@ export default function RemittanceScreen() {
                     setShowCorridorModal(false);
                   }}
                 >
-                  <Text style={styles.destFlagBig}>{c.flag}</Text>
+                  <View style={styles.destIsoBadge}>
+                    <Text style={styles.destIsoBadgeText}>{c.isoCountry || c.corridorCode.slice(0, 2)}</Text>
+                  </View>
                   <View style={{ flex: 1, marginLeft: 10 }}>
                     <Text style={styles.destOptName}>
                       {c.country} ({c.currency})
@@ -823,7 +830,7 @@ export default function RemittanceScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Gogo Claim Verification</Text>
               <TouchableOpacity onPress={() => setShowReceiverClaimModal(false)}>
-                <Text style={styles.closeBtnText}>✕</Text>
+                <Ionicons name="close" size={20} color="#0A0F1C" />
               </TouchableOpacity>
             </View>
 
@@ -1005,6 +1012,21 @@ const styles = StyleSheet.create({
   },
   destLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   destFlag: { fontSize: 22, marginRight: 10 },
+  destIsoBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: '#0F172A',
+    marginRight: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  destIsoBadgeText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#00E676',
+    letterSpacing: 0.5,
+  },
   destCountry: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
   destStatus: { fontSize: 11, color: '#047857', marginTop: 2 },
   selectorArrow: { fontSize: 12, color: '#00C29A', fontWeight: '700' },

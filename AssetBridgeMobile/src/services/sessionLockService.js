@@ -1,10 +1,32 @@
-import * as SecureStore from 'expo-secure-store';
-
 export const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 export const DEFAULT_STEP_UP_MAX_AGE_MS = 2 * 60 * 1000; // 2 minutes for high-risk actions (withdrawals)
 const LAST_ACTIVE_KEY = 'assetbridge_last_active_time';
 const IDLE_TIMEOUT_KEY = 'assetbridge_idle_timeout_ms';
 const LOCK_STATE_KEY = 'assetbridge_session_is_locked';
+
+let customLockStorageAdapter = null;
+let expoSecureStorePromise = null;
+
+export function setSessionLockStorageAdapter(adapter) {
+  customLockStorageAdapter = adapter;
+}
+
+async function getLockStorage() {
+  if (customLockStorageAdapter) return customLockStorageAdapter;
+  if (!expoSecureStorePromise) {
+    expoSecureStorePromise = import('expo-secure-store').catch(() => null);
+  }
+  return expoSecureStorePromise;
+}
+
+async function isStorageAvailable() {
+  const store = await getLockStorage();
+  if (!store) return false;
+  if (typeof store.isAvailableAsync === 'function') {
+    return await store.isAvailableAsync();
+  }
+  return typeof store.getItemAsync === 'function';
+}
 
 class SessionLockService {
   constructor() {
@@ -32,23 +54,24 @@ class SessionLockService {
   }
 
   async init() {
-    if (await SecureStore.isAvailableAsync()) {
+    if (await isStorageAvailable()) {
       try {
-        const savedTimeout = await SecureStore.getItemAsync(IDLE_TIMEOUT_KEY);
+        const store = await getLockStorage();
+        const savedTimeout = await store.getItemAsync(IDLE_TIMEOUT_KEY);
         if (savedTimeout) {
           const parsed = parseInt(savedTimeout, 10);
           if (Number.isFinite(parsed) && parsed > 0) {
             this.memoryTimeoutMs = parsed;
           }
         }
-        const savedLast = await SecureStore.getItemAsync(LAST_ACTIVE_KEY);
+        const savedLast = await store.getItemAsync(LAST_ACTIVE_KEY);
         if (savedLast) {
           const parsedLast = parseInt(savedLast, 10);
           if (Number.isFinite(parsedLast) && parsedLast > 0) {
             this.memoryLastActive = parsedLast;
           }
         }
-        const savedLock = await SecureStore.getItemAsync(LOCK_STATE_KEY);
+        const savedLock = await store.getItemAsync(LOCK_STATE_KEY);
         if (savedLock === 'true') {
           this.memoryIsLocked = true;
         }
@@ -65,9 +88,10 @@ class SessionLockService {
   recordActivity() {
     const now = Date.now();
     this.memoryLastActive = now;
-    SecureStore.isAvailableAsync().then((avail) => {
+    isStorageAvailable().then(async (avail) => {
       if (avail) {
-        SecureStore.setItemAsync(LAST_ACTIVE_KEY, String(now)).catch(() => {});
+        const store = await getLockStorage();
+        store?.setItemAsync?.(LAST_ACTIVE_KEY, String(now)).catch(() => {});
       }
     });
   }
@@ -83,8 +107,9 @@ class SessionLockService {
   async setIdleTimeoutMs(ms) {
     const timeout = Math.max(60 * 1000, Number(ms) || DEFAULT_IDLE_TIMEOUT_MS);
     this.memoryTimeoutMs = timeout;
-    if (await SecureStore.isAvailableAsync()) {
-      await SecureStore.setItemAsync(IDLE_TIMEOUT_KEY, String(timeout)).catch(() => {});
+    if (await isStorageAvailable()) {
+      const store = await getLockStorage();
+      await store.setItemAsync(IDLE_TIMEOUT_KEY, String(timeout)).catch(() => {});
     }
   }
 
@@ -102,8 +127,9 @@ class SessionLockService {
   async lock() {
     this.memoryLastStepUpReauth = 0;
     this.notifyListeners(true);
-    if (await SecureStore.isAvailableAsync()) {
-      await SecureStore.setItemAsync(LOCK_STATE_KEY, 'true').catch(() => {});
+    if (await isStorageAvailable()) {
+      const store = await getLockStorage();
+      await store.setItemAsync(LOCK_STATE_KEY, 'true').catch(() => {});
     }
   }
 
@@ -115,8 +141,9 @@ class SessionLockService {
     this.memoryLastStepUpReauth = now;
     this.recordActivity();
     this.notifyListeners(false);
-    if (await SecureStore.isAvailableAsync()) {
-      await SecureStore.setItemAsync(LOCK_STATE_KEY, 'false').catch(() => {});
+    if (await isStorageAvailable()) {
+      const store = await getLockStorage();
+      await store.setItemAsync(LOCK_STATE_KEY, 'false').catch(() => {});
     }
   }
 
@@ -162,10 +189,11 @@ class SessionLockService {
     this.memoryIsLocked = false;
     this.memoryLastStepUpReauth = 0;
     this.memoryLastActive = Date.now();
-    if (await SecureStore.isAvailableAsync()) {
+    if (await isStorageAvailable()) {
+      const store = await getLockStorage();
       await Promise.all([
-        SecureStore.deleteItemAsync(LOCK_STATE_KEY).catch(() => {}),
-        SecureStore.deleteItemAsync(LAST_ACTIVE_KEY).catch(() => {}),
+        store.deleteItemAsync(LOCK_STATE_KEY).catch(() => {}),
+        store.deleteItemAsync(LAST_ACTIVE_KEY).catch(() => {}),
       ]);
     }
   }
@@ -173,4 +201,3 @@ class SessionLockService {
 
 export const sessionLockService = new SessionLockService();
 export default sessionLockService;
-

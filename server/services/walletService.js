@@ -19,6 +19,7 @@ const SPLITS_STORE_PATH = path.join(DATA_DIR, 'splitPayments.json');
 const LINKS_STORE_PATH = path.join(DATA_DIR, 'paymentLinks.json');
 const NOTIF_STORE_PATH = path.join(DATA_DIR, 'notifications.json');
 const AUDIT_STORE_PATH = path.join(DATA_DIR, 'auditLogs.json');
+const SELF_CUSTODY_PAYMENTS_PATH = path.join(DATA_DIR, 'selfCustodyPayments.json');
 
 // Helper to load or initialize JSON store
 const loadStore = (filePath, defaultVal = {}) => {
@@ -60,6 +61,7 @@ let splitCache = loadStore(SPLITS_STORE_PATH, []);
 let linkCache = loadStore(LINKS_STORE_PATH, []);
 let notifCache = loadStore(NOTIF_STORE_PATH, []);
 let auditCache = loadStore(AUDIT_STORE_PATH, []);
+let selfCustodyPaymentsCache = loadStore(SELF_CUSTODY_PAYMENTS_PATH, []);
 const processedIdempotencyKeys = new Set();
 
 // Standard Tether (ERC-20 USDT) Interface ABI
@@ -477,6 +479,149 @@ class WalletService {
         (userAddr && t.recipientAddress?.toLowerCase() === userAddr) ||
         (userAddr && t.senderAddress?.toLowerCase() === userAddr)
     );
+  }
+
+  /**
+   * Idempotently records or updates a self-custody WDK payment status record scoped to the authenticated user.
+   * The server never signs or moves funds; it only stores status metadata for reconciliation.
+   * Never conflates userOperationHash with transactionHash.
+   */
+  recordSelfCustodyPaymentStatus(userId, payload = {}) {
+    if (!userId) throw new Error('Authenticated userId is required.');
+    const requestId = String(payload.requestId || '').trim();
+    if (!requestId || requestId.length > 128) {
+      throw new Error('A valid payment requestId is required.');
+    }
+
+    const chainId = Number(payload.chainId ?? 11155111);
+    if (chainId !== 11155111) {
+      throw new Error(`Unsupported chainId (${chainId}). Only Ethereum Sepolia (11155111) is allowed.`);
+    }
+
+    const tokenContract = String(
+      payload.tokenContractAddress || this.contractAddress
+    ).trim();
+    if (tokenContract.toLowerCase() !== this.contractAddress.toLowerCase()) {
+      throw new Error(`Unsupported tokenContractAddress (${tokenContract}).`);
+    }
+
+    const recipientAddress = String(payload.recipientAddress || '').trim();
+    if (!ethers.isAddress(recipientAddress)) {
+      throw new Error('A valid 0x recipientAddress is required.');
+    }
+    if (
+      recipientAddress.toLowerCase() === this.contractAddress.toLowerCase() ||
+      recipientAddress.toLowerCase() === '0x0000000000000000000000000000000000000000'
+    ) {
+      throw new Error('Token contract or zero address cannot be used as a recipientAddress.');
+    }
+
+    const amountUsdt = String(payload.amountUsdt ?? '').trim();
+    if (!amountUsdt || Number(amountUsdt) <= 0) {
+      throw new Error('A positive amountUsdt is required.');
+    }
+
+    const allowedStatuses = new Set([
+      'draft',
+      'approved',
+      'submitting',
+      'submitted',
+      'pending',
+      'successful',
+      'failed',
+      'dropped',
+      'outcome-unknown',
+      'expired',
+    ]);
+    const status = String(payload.status || 'pending').trim().toLowerCase();
+    if (!allowedStatuses.has(status)) {
+      throw new Error(`Unsupported payment status "${status}".`);
+    }
+
+    const userOperationHash = payload.userOperationHash
+      ? String(payload.userOperationHash).trim()
+      : null;
+    let transactionHash = payload.transactionHash
+      ? String(payload.transactionHash).trim()
+      : null;
+
+    // Never allow userOperationHash to be stored as transactionHash
+    if (
+      userOperationHash &&
+      transactionHash &&
+      userOperationHash.toLowerCase() === transactionHash.toLowerCase()
+    ) {
+      transactionHash = null;
+    }
+
+    const nowIso = new Date().toISOString();
+    const existingIdx = selfCustodyPaymentsCache.findIndex(
+      (r) => r.userId === userId && r.requestId === requestId
+    );
+
+    if (existingIdx !== -1) {
+      const existing = selfCustodyPaymentsCache[existingIdx];
+      if (
+        existing.recipientAddress.toLowerCase() !== recipientAddress.toLowerCase() ||
+        String(existing.amountUsdt) !== amountUsdt
+      ) {
+        const conflictError = new Error(
+          'Idempotency conflict: requestId is already registered with different payment parameters.'
+        );
+        conflictError.statusCode = 409;
+        throw conflictError;
+      }
+
+      const updated = {
+        ...existing,
+        status,
+        userOperationHash: userOperationHash || existing.userOperationHash || null,
+        transactionHash: transactionHash || existing.transactionHash || null,
+        feeEth: payload.feeEth ?? existing.feeEth ?? null,
+        lastCheckedAt: payload.lastCheckedAt || nowIso,
+        updatedAt: nowIso,
+      };
+      selfCustodyPaymentsCache[existingIdx] = updated;
+      saveStore(SELF_CUSTODY_PAYMENTS_PATH, selfCustodyPaymentsCache);
+      return updated;
+    }
+
+    const created = {
+      id: `scpay_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+      userId,
+      requestId,
+      senderAddress: payload.senderAddress || null,
+      recipientAddress,
+      amountUsdt,
+      amountBaseUnits: payload.amountBaseUnits || null,
+      chainId,
+      tokenContractAddress: this.contractAddress,
+      tokenSymbol: 'USDT',
+      status,
+      userOperationHash,
+      transactionHash,
+      feeEth: payload.feeEth || null,
+      note: String(payload.note || '').slice(0, 140),
+      createdAt: nowIso,
+      lastCheckedAt: payload.lastCheckedAt || nowIso,
+      updatedAt: nowIso,
+    };
+
+    selfCustodyPaymentsCache.unshift(created);
+    if (selfCustodyPaymentsCache.length > 500) selfCustodyPaymentsCache.pop();
+    saveStore(SELF_CUSTODY_PAYMENTS_PATH, selfCustodyPaymentsCache);
+    this.logAudit('SELF_CUSTODY_PAYMENT_STATUS_SYNC', userId, {
+      requestId,
+      status,
+      userOperationHash,
+      transactionHash,
+    });
+    return created;
+  }
+
+  getSelfCustodyPaymentStatuses(userId) {
+    if (!userId) return [];
+    return selfCustodyPaymentsCache.filter((r) => r.userId === userId);
   }
 
   async verifyBlockchainTx(txHash) {

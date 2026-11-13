@@ -1,36 +1,112 @@
-import { SEPOLIA_CHAIN_ID } from './api';
+import { BaseAsset } from '@tetherto/wdk-react-native-core';
+import { bundle } from '../../.wdk/index.js';
+import {
+  WDK_NETWORK_NAME,
+  WDK_SEPOLIA_CHAIN_ID,
+  WDK_SEPOLIA_NETWORK_LABEL,
+  WDK_SEPOLIA_USDT_DECIMALS,
+  WDK_SEPOLIA_ETH_DECIMALS,
+  IS_TESTNET_ENVIRONMENT,
+  TESTNET_FUNDS_NOTICE,
+  MAX_FEE_DRIFT_BPS,
+  FEE_QUOTE_MAX_AGE_MS,
+  WDK_SEPOLIA_USDT_ADDRESS,
+  WDK_SEPOLIA_CANDIDE_USDT_ADDRESS,
+  FORBIDDEN_RECIPIENT_ADDRESSES,
+  USE_TOKEN_PAYMASTER,
+  WDK_FEE_ASSET_LABEL,
+  WDK_FEE_ASSET_DECIMALS,
+  OFFLINE_SIGNING_ENABLED,
+  OFFLINE_SIGNING_DISABLED_REASON,
+  isValidPersonalEvmRecipient,
+  assertSupportedWdkConfig,
+  walletIdForUser,
+} from './wdkConstants';
 
-const SEPOLIA_RPC =
-  process.env.EXPO_PUBLIC_SEPOLIA_RPC_URL ||
-  'https://ethereum-sepolia-rpc.publicnode.com';
-const SEPOLIA_BUNDLER =
-  process.env.EXPO_PUBLIC_SEPOLIA_BUNDLER_URL ||
-  'https://api.candide.dev/public/v3/11155111';
+export {
+  WDK_NETWORK_NAME,
+  WDK_SEPOLIA_CHAIN_ID,
+  WDK_SEPOLIA_NETWORK_LABEL,
+  WDK_SEPOLIA_USDT_DECIMALS,
+  WDK_SEPOLIA_ETH_DECIMALS,
+  IS_TESTNET_ENVIRONMENT,
+  TESTNET_FUNDS_NOTICE,
+  MAX_FEE_DRIFT_BPS,
+  FEE_QUOTE_MAX_AGE_MS,
+  WDK_SEPOLIA_USDT_ADDRESS,
+  WDK_SEPOLIA_CANDIDE_USDT_ADDRESS,
+  FORBIDDEN_RECIPIENT_ADDRESSES,
+  USE_TOKEN_PAYMASTER,
+  WDK_FEE_ASSET_LABEL,
+  WDK_FEE_ASSET_DECIMALS,
+  OFFLINE_SIGNING_ENABLED,
+  OFFLINE_SIGNING_DISABLED_REASON,
+  isValidPersonalEvmRecipient,
+  assertSupportedWdkConfig,
+  walletIdForUser,
+};
 
-// Native ETH fee mode keeps test-token choice independent of paymaster support.
-// Users need Sepolia ETH for UserOperation fees; this is testnet-only config.
+const rpcUrl =
+  process.env.EXPO_PUBLIC_WDK_SEPOLIA_RPC_URL ||
+  'https://sepolia.drpc.org';
+
+const bundlerUrl =
+  process.env.EXPO_PUBLIC_WDK_SEPOLIA_BUNDLER_URL ||
+  'https://api.candide.dev/public/v3/sepolia';
+
+const paymasterUrl = process.env.EXPO_PUBLIC_WDK_SEPOLIA_PAYMASTER_URL || '';
+const paymasterAddress =
+  process.env.EXPO_PUBLIC_WDK_SEPOLIA_PAYMASTER_ADDRESS ||
+  '0x8b1f6cb5d062aa2ce8d581942bbb960420d875ba';
+const paymasterTokenAddress =
+  process.env.EXPO_PUBLIC_WDK_SEPOLIA_PAYMASTER_TOKEN_ADDRESS ||
+  WDK_SEPOLIA_CANDIDE_USDT_ADDRESS;
+
+export const wdkBundleConfig = {
+  bundle,
+};
+
 export const wdkConfigs = {
   networks: {
-    ethereum: {
-      blockchain: 'ethereum',
-      config: {
-        chainId: SEPOLIA_CHAIN_ID,
-        provider: SEPOLIA_RPC,
-        safeModulesVersion: '0.3.0',
-        bundlerUrl: SEPOLIA_BUNDLER,
-        useNativeCoins: true,
-      },
+    [WDK_NETWORK_NAME]: {
+      chainId: WDK_SEPOLIA_CHAIN_ID,
+      provider: rpcUrl,
+      bundlerUrl,
+      safeModulesVersion: '0.3.0',
+      ...(USE_TOKEN_PAYMASTER
+        ? {
+            paymasterUrl,
+            paymasterAddress,
+            paymasterToken: {
+              address: paymasterTokenAddress,
+            },
+            transferMaxFee: 100000,
+          }
+        : {
+            useNativeCoins: true,
+          }),
     },
   },
 };
 
-export const assetBridgeUsdt = {
-  id: 'usdt-ethereum-sepolia',
-  network: 'ethereum',
+export const sepoliaEthAsset = new BaseAsset({
+  id: 'eth',
+  network: WDK_NETWORK_NAME,
+  symbol: 'ETH',
+  name: 'Sepolia Ether (Testnet)',
+  decimals: WDK_SEPOLIA_ETH_DECIMALS,
+  isNative: true,
+  address: null,
+});
+
+export const sepoliaUsdtAsset = new BaseAsset({
+  id: 'usdt',
+  network: WDK_NETWORK_NAME,
   symbol: 'USDT',
-  name: 'Tether USD (Sepolia test token)',
-  decimals: 6,
+  name: 'Sepolia Tether USD (Testnet)',
+  decimals: WDK_SEPOLIA_USDT_DECIMALS,
   isNative: false,
-  address: process.env.EXPO_PUBLIC_SEPOLIA_USDT_ADDRESS ||
-    '0x7169D38820dfd117C3FA1f22a697dBA58d90BA06',
-};
+  address: WDK_SEPOLIA_USDT_ADDRESS,
+});
+
+export const wdkAssets = [sepoliaUsdtAsset, sepoliaEthAsset];

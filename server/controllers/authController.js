@@ -268,6 +268,69 @@ export const getProfile = async (req, res) => {
 };
 
 /**
+ * Updates user profile information (e.g. fullName and optionally password).
+ */
+export const updateProfile = async (req, res) => {
+  try {
+    const email = req.user?.email;
+    if (!email) {
+      return errorResponse(res, 'Authentication required', 401);
+    }
+
+    const { fullName, password } = req.body || {};
+    let updatedFullName = req.user?.fullName;
+
+    if (password && password.length < 8) {
+      return errorResponse(res, 'Password must be at least 8 characters long.', 400);
+    }
+
+    if (isSupabaseConfigured() && supabase) {
+      const updatePayload = {};
+      if (fullName) {
+        updatePayload.data = { full_name: fullName.trim() };
+      }
+      if (password) {
+        updatePayload.password = password;
+      }
+      if (Object.keys(updatePayload).length > 0) {
+        const { data, error } = await supabase.auth.updateUser(updatePayload);
+        if (error) {
+          return errorResponse(res, error.message, 400);
+        }
+        if (data?.user?.user_metadata?.full_name) {
+          updatedFullName = data.user.user_metadata.full_name;
+        }
+      }
+    } else {
+      if (fullName) {
+        updatedFullName = fullName.trim();
+      }
+    }
+
+    walletService.recordAuditLog('USER_PROFILE_UPDATED', email, {
+      userId: req.user.id,
+      updatedFullName: Boolean(fullName),
+      updatedPassword: Boolean(password),
+    });
+
+    return successResponse(
+      res,
+      {
+        user: {
+          id: req.user.id,
+          email,
+          fullName: updatedFullName || fullName || email.split('@')[0],
+          role: req.user.role || 'USER',
+        },
+      },
+      'Profile updated successfully'
+    );
+  } catch (err) {
+    return errorResponse(res, 'Failed to update profile: ' + err.message, 500);
+  }
+};
+
+/**
  * Revokes the server-side session and records audit trail.
  */
 export const signOut = async (req, res) => {

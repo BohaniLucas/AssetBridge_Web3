@@ -1,5 +1,5 @@
-import { API_BASE_URL } from '../config/api';
-import { mobileAuthService } from './authService';
+import { API_BASE_URL } from '../config/api.js';
+import { mobileAuthService } from './authService.js';
 
 const authHeaders = async () => {
   const token = await mobileAuthService.getAccessToken();
@@ -575,6 +575,62 @@ class MobileWalletService {
         headers: await authHeaders(),
       });
       const json = await res.json();
+      if (res.ok && Array.isArray(json.data)) return json.data;
+      return [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Idempotently records or updates a self-custody WDK payment status record on the backend
+   * scoped to the authenticated user. The backend never signs or moves funds for this path.
+   */
+  async syncSelfCustodyPaymentStatus(userId, record) {
+    if (!userId || !record?.requestId) return null;
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/wallet/${encodeURIComponent(userId)}/self-custody-payments`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+          body: JSON.stringify({
+            requestId: record.requestId,
+            senderAddress: record.senderAddress || null,
+            recipientAddress: record.recipient,
+            amountUsdt: record.amountUsdt,
+            amountBaseUnits: record.amountBaseUnits,
+            chainId: record.chainId || SUPPORTED_WALLET_CONFIG.chainId,
+            tokenContractAddress:
+              record.tokenAddress || SUPPORTED_WALLET_CONFIG.tokenContractAddress,
+            tokenSymbol: record.tokenSymbol || SUPPORTED_WALLET_CONFIG.tokenSymbol,
+            status: record.status,
+            userOperationHash: record.userOperationHash || null,
+            transactionHash: record.transactionHash || null,
+            feeEth: record.feeEth || null,
+            note: record.note || '',
+            lastCheckedAt: record.lastCheckedAt || new Date().toISOString(),
+          }),
+        }
+      );
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.data) return json.data;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async getSelfCustodyPaymentStatuses(userId) {
+    if (!userId) return [];
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/wallet/${encodeURIComponent(userId)}/self-custody-payments`,
+        {
+          headers: await authHeaders(),
+        }
+      );
+      const json = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(json.data)) return json.data;
       return [];
     } catch {

@@ -1252,8 +1252,8 @@ export default function DashboardPage({ currentView, onNavigate, onLogout, user,
           <div role="dialog" aria-modal="true" className="w-full max-w-md rounded-[2.5rem] bg-white p-7 shadow-2xl border border-amber-100 text-slate-900 animate-scale-up">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-50 text-amber-700 text-xl">
-                  👵
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-50 text-amber-700 text-xs font-bold">
+                  GOGO
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-slate-950">Send via WhatsApp (Gogo Flow)</h3>
@@ -1274,8 +1274,8 @@ export default function DashboardPage({ currentView, onNavigate, onLogout, user,
 
             {gogoClaim ? (
               <div className="mt-5 text-center space-y-4">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 text-2xl">
-                  💌
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 font-bold text-xs">
+                  LINK
                 </div>
                 <div>
                   <h4 className="text-lg font-black text-slate-900">
@@ -1303,7 +1303,7 @@ export default function DashboardPage({ currentView, onNavigate, onLogout, user,
                   {gogoClaim.status === 'claimed' && (
                     <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center space-y-1">
                       <p className="text-xs font-black text-emerald-800">
-                        🎉 CLAIMED BY {gogoClaim.recipientName.toUpperCase()}!
+                        CLAIMED BY {gogoClaim.recipientName.toUpperCase()}!
                       </p>
                       <p className="text-[11px] text-emerald-600">
                         R{gogoClaim.amountZar} released to her new custodial phone account
@@ -1316,7 +1316,7 @@ export default function DashboardPage({ currentView, onNavigate, onLogout, user,
 
                   {gogoClaim.status === 'refunded' && (
                     <div className="p-3 bg-slate-100 rounded-xl text-xs font-bold text-slate-600">
-                      ↩️ Link Cancelled · Funds returned to your wallet
+                      Link Cancelled · Funds returned to your wallet
                     </div>
                   )}
                 </div>
@@ -1354,7 +1354,7 @@ export default function DashboardPage({ currentView, onNavigate, onLogout, user,
                         {isSimulatingGogo ? (
                           <Loader2 size={13} className="animate-spin" />
                         ) : (
-                          <span>⚡ Simulate Claim</span>
+                          <span>Simulate Claim</span>
                         )}
                       </button>
                     </div>

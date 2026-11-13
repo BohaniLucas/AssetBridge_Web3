@@ -14,7 +14,13 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { mobileAuthService } from '../services/authService';
 
-export default function SessionLockOverlay({ visible, userEmail, onUnlocked, onSignOut }) {
+export default function SessionLockOverlay({
+  visible,
+  userEmail,
+  isOffline = false,
+  onUnlocked,
+  onSignOut,
+}) {
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -52,7 +58,10 @@ export default function SessionLockOverlay({ visible, userEmail, onUnlocked, onS
 
           <Text style={styles.title}>Session Locked</Text>
           <Text style={styles.subtitle}>
-            Financial controls locked after 5 minutes of inactivity or app backgrounding.
+            Financial controls and wallet signing are locked after 5 minutes of inactivity or app backgrounding.
+            {isOffline
+              ? ' Offline mode active: enter your password to verify against your local device credential.'
+              : ''}
           </Text>
 
           {/* Account Card */}

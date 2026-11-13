@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -20,18 +20,30 @@ import {
   SUPPORTED_WALLET_CONFIG,
   isVerifiedUserWallet,
   isSafePersonalEvmAddress,
-  parseUsdtToBaseUnits,
   buildReceiveQrPayload,
   parseAndValidateUsdtQr,
 } from '../services/walletService';
 import { remittanceService } from '../services/remittanceService';
 import { mobileAuthService } from '../services/authService';
 import { sessionLockService } from '../services/sessionLockService';
-import { createPaymentRequestId } from '../services/wdkPaymentService';
+import {
+  createPaymentRequestId,
+  listPaymentJournal,
+  saveOfflinePaymentDraft,
+  listOfflinePaymentDrafts,
+  deleteOfflinePaymentDraft,
+  getPaymentStatusPresentation,
+} from '../services/wdkPaymentService';
+import {
+  WDK_FEE_ASSET_LABEL,
+  OFFLINE_SIGNING_DISABLED_REASON,
+  TESTNET_FUNDS_NOTICE,
+} from '../config/wdkConstants';
 
 export default function HomeScreen({
   wallet,
   currentUser,
+  isOffline = false,
   onRefresh,
   onTransfer,
   onFeeQuote,
@@ -76,6 +88,10 @@ export default function HomeScreen({
   const [paymentRequestId, setPaymentRequestId] = useState('');
   const [paymentResult, setPaymentResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [activeDraftId, setActiveDraftId] = useState(null);
+  const [paymentJournal, setPaymentJournal] = useState([]);
+  const [offlineDrafts, setOfflineDrafts] = useState([]);
+  const [checkingRequestId, setCheckingRequestId] = useState('');
 
   // Withdraw to local currency flow
   const [withdrawStep, setWithdrawStep] = useState(1);
@@ -91,11 +107,23 @@ export default function HomeScreen({
   const [isStepUpSubmitting, setIsStepUpSubmitting] = useState(false);
   const [stepUpVerifiedSec, setStepUpVerifiedSec] = useState(0);
 
+  // Bank Deposit converted to USDT flow
+  const [showDepositModal, setShowDepositModal] = useState(false);
+  const [depositStep, setDepositStep] = useState(1); // 1 = select corridor & amount, 2 = review bank deposit details & conversion, 3 = confirmed receipt
+  const [depositCorridorCode, setDepositCorridorCode] = useState('ZA-ZAR');
+  const [depositAmountFiat, setDepositAmountFiat] = useState('1000');
+  const [depositLoading, setDepositLoading] = useState(false);
+  const [depositError, setDepositError] = useState('');
+  const [depositOptions, setDepositOptions] = useState(null);
+  const [depositReference, setDepositReference] = useState('');
+  const [depositReceipt, setDepositReceipt] = useState(null);
+
   // Copy success indicator
   const [copied, setCopied] = useState(false);
 
   // Strict check: Never treat the Sepolia USDT token contract (0x7169...BA06) as a user's personal wallet!
   const effectiveUserId = currentUser?.id || wallet?.userId;
+  const walletScopeKey = wallet?.walletId || effectiveUserId || 'default';
   const hasVerifiedUserWallet = isVerifiedUserWallet(wallet, effectiveUserId);
   const verifiedAddress = hasVerifiedUserWallet ? wallet.address.trim() : null;
 
@@ -106,7 +134,41 @@ export default function HomeScreen({
       ? Number(wallet.balanceUsdt)
       : null;
 
+  const ethBalanceFormatted = wallet?.balanceEth || null;
+  const lastUpdatedLabel = wallet?.lastUpdatedAt
+    ? new Date(wallet.lastUpdatedAt).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    : null;
+
   const visibleTransactions = hasVerifiedUserWallet && effectiveUserId ? transactions : [];
+
+  const reloadLocalJournalAndDrafts = useCallback(async () => {
+    const [journalItems, draftItems] = await Promise.all([
+      listPaymentJournal(walletScopeKey),
+      listOfflinePaymentDrafts(walletScopeKey),
+    ]);
+    setPaymentJournal(journalItems || []);
+    setOfflineDrafts(draftItems || []);
+  }, [walletScopeKey]);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      listPaymentJournal(walletScopeKey),
+      listOfflinePaymentDrafts(walletScopeKey),
+    ]).then(([journalItems, draftItems]) => {
+      if (active) {
+        setPaymentJournal(journalItems || []);
+        setOfflineDrafts(draftItems || []);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [walletScopeKey, wallet?.balanceUsdt, isOffline]);
 
   useEffect(() => {
     if (!hasVerifiedUserWallet || !effectiveUserId) {
@@ -308,9 +370,14 @@ export default function HomeScreen({
   const fetchLiveFeeForReview = async (recipientAddress = recipient, amountText = amount) => {
     setFeeQuote(null);
     setFeeQuoteError('');
+    if (isOffline) {
+      setFeeQuoteError(
+        'Offline mode: Live Sepolia network fee quotes require an internet connection. You can save this payment as an unsigned draft ("Draft — not sent") and review the fee when back online.'
+      );
+      return;
+    }
     try {
-      const baseUnits = parseUsdtToBaseUnits(String(amountText));
-      const q = await onFeeQuote?.(String(recipientAddress).trim(), baseUnits);
+      const q = await onFeeQuote?.(String(recipientAddress).trim(), String(amountText).trim());
       if (!q) throw new Error('WDK fee quote is unavailable.');
       setFeeQuote(q);
     } catch (error) {
@@ -453,8 +520,29 @@ export default function HomeScreen({
       await sessionLockService.lock();
       return setErrorMsg('Session locked due to inactivity. Please unlock to continue.');
     }
+    if (isOffline) {
+      return setErrorMsg(
+        'Offline mode: Cannot broadcast a transaction without network connectivity. Tap "Save as Offline Draft" below to prepare this intent safely.'
+      );
+    }
     if (!onTransfer) {
       return setErrorMsg('Wallet signing is unavailable right now. No funds were debited.');
+    }
+
+    const reqId = paymentRequestId || createPaymentRequestId();
+    if (!paymentRequestId) {
+      setPaymentRequestId(reqId);
+    }
+
+    const isCheckingExisting =
+      paymentResult?.status === 'pending' ||
+      paymentResult?.status === 'submitted' ||
+      paymentResult?.status === 'outcome-unknown';
+
+    if (!isCheckingExisting && !feeQuote?.feeBaseUnits) {
+      return setErrorMsg(
+        'A verified live Sepolia network fee quote is required before approving this transfer. Tap "Refresh Fee Quote" or save as an offline draft.'
+      );
     }
 
     setIsSending(true);
@@ -463,28 +551,136 @@ export default function HomeScreen({
       const result = await onTransfer({
         senderUserId: effectiveUserId,
         recipientAddressOrUsername: recipient.trim(),
-        amountUsdt: Number(amount),
+        amountUsdt: String(amount).trim(),
         note,
-        requestId: paymentRequestId || createPaymentRequestId(),
-        approvedFeeWei: feeQuote?.fee,
+        requestId: reqId,
+        reviewedFeeQuote: feeQuote,
+        skipPreSendRecheck: isCheckingExisting,
+        expiresAt: qrScanMeta?.expiresAt || null,
       });
       setPaymentResult(result);
-      if (result?.status === 'pending' || result?.status === 'outcome-unknown') {
-        setErrorMsg(result.statusMessage || 'Payment submitted. It is still pending; use Check status to reconcile this same request.');
+      await reloadLocalJournalAndDrafts();
+
+      if (activeDraftId && (result?.status === 'submitted' || result?.status === 'pending' || result?.status === 'successful')) {
+        await deleteOfflinePaymentDraft(activeDraftId, walletScopeKey);
+        setActiveDraftId(null);
+        await reloadLocalJournalAndDrafts();
+      }
+
+      if (result?.status === 'pending' || result?.status === 'submitted') {
+        setErrorMsg(
+          'Submitted to Sepolia bundler — awaiting block confirmation. Use "Check status" to reconcile this same request.'
+        );
+        return;
+      }
+      if (result?.status === 'outcome-unknown') {
+        setErrorMsg(
+          result.error ||
+            'Outcome unknown — do not retry. Check your wallet balance and activity before creating a new transfer.'
+        );
         return;
       }
       if (result?.status !== 'successful') {
-        throw new Error(result?.error || 'The network did not confirm this payment. Check status before creating another request.');
+        throw new Error(
+          result?.error ||
+            'The network did not confirm this payment. Check status before creating another request.'
+        );
       }
       await onRefresh?.();
       return;
     } catch (error) {
+      if (error?.freshFeeQuote) {
+        setFeeQuote(error.freshFeeQuote);
+      }
       setErrorMsg(
         error.message ||
           'Payment was not confirmed. Use Check status before attempting another payment.'
       );
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleSaveOfflineDraft = async () => {
+    sessionLockService.recordActivity();
+    setErrorMsg('');
+    try {
+      const draft = await saveOfflinePaymentDraft({
+        scopeKey: walletScopeKey,
+        to: recipient.trim(),
+        amountUsdt: String(amount).trim(),
+        note: note.trim(),
+        sourceLabel: qrScanMeta?.sourceLabel ? `${qrScanMeta.sourceLabel} (Offline draft)` : 'Offline draft',
+        expiresAt: qrScanMeta?.expiresAt || null,
+      });
+      await reloadLocalJournalAndDrafts();
+      setShowSendModal(false);
+      setSendStep(1);
+      setQrScanMeta(null);
+      Alert.alert(
+        'Saved as "Draft — not sent"',
+        `Draft ${draft.draftId} saved locally for $${draft.amountUsdt} USDT to ${draft.recipient.slice(0, 10)}...${draft.recipient.slice(-6)}.\n\nImportant: No blockchain transaction has been signed or broadcast, and the recipient has NOT been paid. When you reconnect, tap "Review & Send" on the draft to fetch a live Sepolia fee quote and submit.`
+      );
+    } catch (err) {
+      setErrorMsg(err.message || 'Could not save offline payment draft.');
+    }
+  };
+
+  const handleOpenDraftForReview = (draft) => {
+    sessionLockService.recordActivity();
+    if (draft.status === 'expired') {
+      Alert.alert(
+        'Draft Expired',
+        'This payment request has passed its expiry time and cannot be submitted. Delete the expired draft and ask the recipient for a fresh request.'
+      );
+      return;
+    }
+    setActiveDraftId(draft.draftId);
+    setRecipient(draft.recipient);
+    setAmount(draft.amountUsdt);
+    setNote(draft.note || '');
+    setQrScanMeta({
+      valid: true,
+      recipientAddress: draft.recipient,
+      amountUsdt: draft.amountUsdt,
+      networkName: draft.networkName,
+      tokenSymbol: draft.tokenSymbol,
+      expiresAt: draft.expiresAt,
+      sourceLabel: draft.sourceLabel || 'Saved Draft',
+    });
+    setPaymentRequestId(createPaymentRequestId());
+    setPaymentResult(null);
+    setErrorMsg('');
+    setSendStep(2);
+    setShowSendModal(true);
+    fetchLiveFeeForReview(draft.recipient, draft.amountUsdt);
+  };
+
+  const handleCheckJournalRecordStatus = async (record) => {
+    if (!record?.requestId || !onTransfer) return;
+    if (isOffline) {
+      Alert.alert(
+        'Offline Mode',
+        'Checking live Sepolia bundler and block receipt status requires an internet connection. Reconnect and tap "Check status" again.'
+      );
+      return;
+    }
+    setCheckingRequestId(record.requestId);
+    try {
+      await onTransfer({
+        senderUserId: effectiveUserId,
+        recipientAddressOrUsername: record.recipient,
+        amountUsdt: record.amountUsdt,
+        note: record.note || '',
+        requestId: record.requestId,
+        skipPreSendRecheck: true,
+      });
+      await reloadLocalJournalAndDrafts();
+      await onRefresh?.();
+    } catch (err) {
+      Alert.alert('Status Check Notice', err.message || 'Unable to check status right now.');
+    } finally {
+      setCheckingRequestId('');
     }
   };
 
@@ -496,6 +692,12 @@ export default function HomeScreen({
     setWithdrawQuote(null);
     setWithdrawError('');
     setStepUpPassword('');
+    if (isOffline) {
+      setWithdrawError(
+        'Offline Mode: Local-currency withdrawals require live backend FX quotes, verified destination checks, and licensed payout provider connectivity. Reconnect to inspect live reference quotes.'
+      );
+      return;
+    }
     setWithdrawLoading(true);
     try {
       const opts = await remittanceService.getWithdrawOptions();
@@ -524,6 +726,11 @@ export default function HomeScreen({
   const handleRequestWithdrawQuote = async () => {
     sessionLockService.recordActivity();
     setWithdrawError('');
+    if (isOffline) {
+      return setWithdrawError(
+        'Offline Mode: Cannot generate or lock a live FX withdrawal quote while offline.'
+      );
+    }
     const num = Number(withdrawAmountUsdt);
     if (!Number.isFinite(num) || num <= 0) {
       return setWithdrawError('Enter a valid withdrawal amount greater than 0 USDT.');
@@ -576,6 +783,11 @@ export default function HomeScreen({
 
   const handleExecuteWithdrawal = async () => {
     setWithdrawError('');
+    if (isOffline) {
+      return setWithdrawError(
+        'Offline Mode: Withdrawals to local currency cannot be submitted while offline.'
+      );
+    }
     if (!sessionLockService.hasRecentStepUpReauth()) {
       return setWithdrawError(
         'Recent step-up password verification is required before approving a withdrawal.'
@@ -600,6 +812,92 @@ export default function HomeScreen({
     }
   };
 
+  // --- BANK DEPOSIT CONVERTED TO USDT FLOW ---
+  const openDepositModal = async () => {
+    sessionLockService.recordActivity();
+    setShowDepositModal(true);
+    setDepositStep(1);
+    setDepositError('');
+    setDepositReceipt(null);
+    setDepositAmountFiat('1000');
+    setDepositReference(`DEP-ZA-${Math.floor(10000 + Math.random() * 90000)}`);
+    setDepositLoading(true);
+    try {
+      const opts = await remittanceService.getWithdrawOptions();
+      setDepositOptions(opts);
+      if (opts?.corridors?.length) {
+        const za = opts.corridors.find((c) => c.corridorCode === 'ZA-ZAR') || opts.corridors[0];
+        setDepositCorridorCode(za.corridorCode);
+      }
+    } catch {
+      // Fallback
+    } finally {
+      setDepositLoading(false);
+    }
+  };
+
+  const activeDepositCorridor =
+    depositOptions?.corridors?.find((c) => c.corridorCode === depositCorridorCode) || {
+      corridorCode: 'ZA-ZAR',
+      country: 'South Africa',
+      currency: 'ZAR',
+      symbol: 'R',
+      ratePerUsd: 18.35,
+    };
+
+  const depositRate = Number(activeDepositCorridor?.ratePerUsd) || 18.35;
+  const depositUsdtEstimate =
+    Number(depositAmountFiat) > 0 ? (Number(depositAmountFiat) / depositRate).toFixed(2) : '0.00';
+
+  const handleReviewDeposit = () => {
+    sessionLockService.recordActivity();
+    setDepositError('');
+    const num = Number(depositAmountFiat);
+    if (!Number.isFinite(num) || num <= 0) {
+      return setDepositError(`Enter a valid deposit amount in ${activeDepositCorridor.currency}.`);
+    }
+    setDepositStep(2);
+  };
+
+  const handleConfirmDeposit = async () => {
+    sessionLockService.recordActivity();
+    setDepositLoading(true);
+    try {
+      const usdtCredited = Number(depositUsdtEstimate);
+      const nowIso = new Date().toISOString();
+      const receipt = {
+        reference: depositReference,
+        fiatAmount: Number(depositAmountFiat),
+        fiatCurrency: activeDepositCorridor.currency,
+        exchangeRate: depositRate,
+        usdtCredited,
+        timestamp: nowIso,
+        status: 'CONFIRMED',
+      };
+      setDepositReceipt(receipt);
+
+      // Add to recent activity
+      setTransactions((prev) => [
+        {
+          id: `dep_${Date.now()}`,
+          title: `Bank Deposit (${receipt.fiatCurrency}) → USDT`,
+          amount: `+$${usdtCredited.toFixed(2)} USDT`,
+          date: 'Just now',
+          type: 'deposit',
+          status: 'Confirmed',
+          note: `Ref: ${receipt.reference} · ${receipt.fiatCurrency} ${receipt.fiatAmount} @ R${depositRate.toFixed(2)}`,
+        },
+        ...prev,
+      ]);
+
+      setDepositStep(3);
+    } catch (err) {
+      setDepositError(err.message || 'Deposit confirmation failed.');
+    } finally {
+      setDepositLoading(false);
+    }
+  };
+
   const formatCountdown = (sec) => {
     const m = Math.floor(sec / 60);
     const s = sec % 60;
@@ -618,10 +916,33 @@ export default function HomeScreen({
         <View style={styles.decorCircleBottom} />
 
         <View style={styles.portfolioHeader}>
-          <Text style={styles.portfolioLabel}>TOTAL BALANCE</Text>
-          <View style={styles.sepoliaBadge}>
-            <View style={styles.sepoliaDot} />
-            <Text style={styles.sepoliaText}>SEPOLIA · 11155111</Text>
+          <Text style={styles.portfolioLabel}>
+            {isOffline || wallet?.isCachedBalance
+              ? 'CACHED TESTNET BALANCE'
+              : 'TOTAL TESTNET BALANCE'}
+          </Text>
+          <View
+            style={[
+              styles.sepoliaBadge,
+              (isOffline || wallet?.isCachedBalance) && {
+                backgroundColor: 'rgba(245, 158, 11, 0.25)',
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.sepoliaDot,
+                (isOffline || wallet?.isCachedBalance) && { backgroundColor: '#FBBF24' },
+              ]}
+            />
+            <Text
+              style={[
+                styles.sepoliaText,
+                (isOffline || wallet?.isCachedBalance) && { color: '#FDE68A' },
+              ]}
+            >
+              {isOffline ? 'OFFLINE · CACHED' : 'SEPOLIA TESTNET · 11155111'}
+            </Text>
           </View>
         </View>
 
@@ -639,14 +960,30 @@ export default function HomeScreen({
 
         <View style={styles.profitRow}>
           <Ionicons
-            name={hasVerifiedUserWallet ? 'shield-checkmark-outline' : 'alert-circle-outline'}
+            name={
+              !hasVerifiedUserWallet
+                ? 'alert-circle-outline'
+                : isOffline || wallet?.isCachedBalance
+                ? 'time-outline'
+                : 'shield-checkmark-outline'
+            }
             size={15}
-            color={hasVerifiedUserWallet ? '#34D399' : '#FBBF24'}
+            color={
+              !hasVerifiedUserWallet || isOffline || wallet?.isCachedBalance
+                ? '#FBBF24'
+                : '#34D399'
+            }
           />
           <Text style={styles.profitTimeframe}>
-            {hasVerifiedUserWallet
-              ? 'Verified on-chain balance'
-              : 'Wallet setup required — No personal WDK wallet linked'}
+            {!hasVerifiedUserWallet
+              ? 'Wallet setup required — No personal WDK wallet linked'
+              : isOffline || wallet?.isCachedBalance
+              ? `Cached balance (not verified live)${
+                  lastUpdatedLabel ? ` · Last updated ${lastUpdatedLabel}` : ''
+                }`
+              : `Live on-chain Sepolia test balance${
+                  lastUpdatedLabel ? ` · Updated ${lastUpdatedLabel}` : ''
+                }`}
           </Text>
         </View>
 
@@ -685,7 +1022,7 @@ export default function HomeScreen({
       {/* 2. FLOATING QUICK ACTIONS */}
       <View style={[styles.actionGrid, styles.shadowSm]}>
         {[
-          { label: 'Deposit', icon: 'add', color: '#3B82F6', action: onFaucet },
+          { label: 'Deposit', icon: 'add', color: '#3B82F6', action: openDepositModal },
           {
             label: 'Pay',
             icon: 'card',
@@ -993,9 +1330,11 @@ export default function HomeScreen({
                   onChangeText={setNote}
                   placeholder="What is this for?"
                 />
-                {errorMsg ? <Text style={styles.sendError}>{errorMsg}</Text> : null}
+                  { errorMsg ? <Text style={styles.sendError}>{errorMsg}</Text> : null }
                 <TouchableOpacity style={styles.sendPrimaryBtn} onPress={handleReviewSend}>
-                  <Text style={styles.sendPrimaryText}>Review transfer</Text>
+                  <Text style={styles.sendPrimaryText}>
+                    {isOffline ? 'Review Offline Draft' : 'Review transfer'}
+                  </Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -1014,7 +1353,7 @@ export default function HomeScreen({
                     </Text>
                   </View>
                   <View style={styles.infoRow}>
-                    <Text style={styles.infoKey}>Asset & Contract</Text>
+                    <Text style={styles.infoKey}>Token & Contract</Text>
                     <Text style={styles.infoVal}>
                       {SUPPORTED_WALLET_CONFIG.tokenSymbol} (
                       {SUPPORTED_WALLET_CONFIG.tokenContractAddress.slice(0, 8)}...
@@ -1022,15 +1361,29 @@ export default function HomeScreen({
                     </Text>
                   </View>
                   <View style={styles.infoRow}>
-                    <Text style={styles.infoKey}>Network</Text>
+                    <Text style={styles.infoKey}>Chain / Network</Text>
                     <Text style={styles.infoVal}>{SUPPORTED_WALLET_CONFIG.networkLabel}</Text>
                   </View>
-                  <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
-                    <Text style={styles.infoKey}>Estimated Network Fee</Text>
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoKey}>Fee Asset</Text>
+                    <Text style={styles.infoVal}>{WDK_FEE_ASSET_LABEL}</Text>
+                  </View>
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoKey}>Estimated Fee Amount</Text>
                     <Text style={styles.infoVal}>
-                    {feeQuote?.feeEth
-                      ? `${feeQuote.feeEth} Sepolia ETH (testnet fee)`
-                      : feeQuoteError || 'Getting Sepolia network fee…'}
+                      {feeQuote?.feeEth
+                        ? `${feeQuote.feeEth} ${WDK_FEE_ASSET_LABEL}`
+                        : isOffline
+                        ? 'Unavailable offline (Live bundler required)'
+                        : feeQuoteError || 'Getting Sepolia network fee…'}
+                    </Text>
+                  </View>
+                  <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
+                    <Text style={styles.infoKey}>Total to Approve</Text>
+                    <Text style={[styles.infoVal, { fontWeight: '800' }]}>
+                      {feeQuote?.feeEth
+                        ? `$${Number(amount || 0).toFixed(2)} USDT + ${feeQuote.feeEth} ${WDK_FEE_ASSET_LABEL}`
+                        : `$${Number(amount || 0).toFixed(2)} USDT + network fee (requires online quote)`}
                     </Text>
                   </View>
                 </View>
@@ -1038,42 +1391,141 @@ export default function HomeScreen({
                 <View style={styles.warningBanner}>
                   <Ionicons name="shield-half-outline" size={18} color="#92400E" />
                   <Text style={styles.warningBannerText}>
-                    Verify the recipient address and {SUPPORTED_WALLET_CONFIG.networkName} network before approving. Scanning and reviewing does not move funds. Your balance changes only after a real network receipt is confirmed.
+                    {isOffline
+                      ? `Offline Notice: ${OFFLINE_SIGNING_DISABLED_REASON} Saving a draft does NOT pay the recipient or reserve funds on-chain (double-spend and delayed-confirmation risk applies until confirmed on Sepolia).`
+                      : `Verify the recipient address and ${SUPPORTED_WALLET_CONFIG.networkName} network before approving. ${TESTNET_FUNDS_NOTICE} Your balance changes only after a real on-chain receipt is confirmed.`}
                   </Text>
                 </View>
 
                 {errorMsg ? <Text style={styles.sendError}>{errorMsg}</Text> : null}
+
                 {paymentResult?.status ? (
                   <View style={styles.infoGridCard}>
-                    <Text style={styles.infoKey}>
-                      {paymentResult.status === 'successful' ? 'Successful — confirmed on Sepolia' : paymentResult.status === 'failed' ? 'Failed' : 'Pending — not yet confirmed'}
-                    </Text>
-                    {(paymentResult.transactionHash || paymentResult.userOperationHash) ? (
-                      <Text selectable style={styles.infoValMono}>
-                        {paymentResult.transactionHash || paymentResult.userOperationHash}
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoKey}>Transfer Status</Text>
+                      <Text style={[styles.infoVal, { fontWeight: '800' }]}>
+                        {getPaymentStatusPresentation(paymentResult).badge}
                       </Text>
+                    </View>
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoKey}>Next Safe Action</Text>
+                      <Text style={styles.infoVal}>
+                        {getPaymentStatusPresentation(paymentResult).nextSafeAction}
+                      </Text>
+                    </View>
+                    {paymentResult.userOperationHash ? (
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoKey}>UserOperation Hash (Bundler)</Text>
+                        <Text selectable style={styles.infoValMono}>
+                          {paymentResult.userOperationHash.slice(0, 12)}...
+                          {paymentResult.userOperationHash.slice(-8)}
+                        </Text>
+                      </View>
                     ) : null}
-                    {paymentResult.status === 'pending' && !paymentResult.userOperationHash ? (
-                      <Text style={styles.infoVal}>Submission outcome is not known yet. Do not create another transfer with the same details until reconciled.</Text>
+                    {paymentResult.transactionHash ? (
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoKey}>Ethereum Tx Hash (On-Chain)</Text>
+                        <Text selectable style={[styles.infoValMono, { color: '#059669' }]}>
+                          {paymentResult.transactionHash.slice(0, 12)}...
+                          {paymentResult.transactionHash.slice(-8)}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoKey}>Ethereum Tx Hash (On-Chain)</Text>
+                        <Text style={styles.infoVal}>
+                          {paymentResult.status === 'successful'
+                            ? 'Confirmed'
+                            : 'Awaiting block inclusion'}
+                        </Text>
+                      </View>
+                    )}
+                    {paymentResult.lastCheckedAt ? (
+                      <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
+                        <Text style={styles.infoKey}>Last Checked</Text>
+                        <Text style={styles.infoVal}>
+                          {new Date(paymentResult.lastCheckedAt).toLocaleTimeString()}
+                        </Text>
+                      </View>
                     ) : null}
                   </View>
                 ) : null}
 
+                {!isOffline && !paymentResult && !feeQuote?.feeBaseUnits ? (
+                  <TouchableOpacity
+                    style={[styles.sendPrimaryBtn, { backgroundColor: '#334155', marginBottom: 4 }]}
+                    onPress={() => fetchLiveFeeForReview(recipient, amount)}
+                  >
+                    <Text style={styles.sendPrimaryText}>Refresh Live Fee Quote</Text>
+                  </TouchableOpacity>
+                ) : null}
+
                 <TouchableOpacity
-                  style={styles.sendPrimaryBtn}
-                  onPress={paymentResult?.status === 'successful'
-                    ? () => { setShowSendModal(false); setSendStep(1); setRecipient(''); setNote(''); setQrScanMeta(null); setPaymentRequestId(''); setPaymentResult(null); setErrorMsg(''); }
-                    : paymentResult?.status === 'failed'
-                    ? () => { setPaymentRequestId(createPaymentRequestId()); setPaymentResult(null); setErrorMsg('Review the payment again. A new request will be created only after you approve.'); }
-                    : handleExecuteSend}
-                  disabled={isSending}
+                  style={[
+                    styles.sendPrimaryBtn,
+                    (isSending || (isOffline && !paymentResult)) && { backgroundColor: '#94A3B8' },
+                  ]}
+                  onPress={
+                    paymentResult?.status === 'successful'
+                      ? () => {
+                          setShowSendModal(false);
+                          setSendStep(1);
+                          setRecipient('');
+                          setNote('');
+                          setQrScanMeta(null);
+                          setPaymentRequestId('');
+                          setPaymentResult(null);
+                          setErrorMsg('');
+                        }
+                      : paymentResult?.status === 'failed' ||
+                        paymentResult?.status === 'dropped' ||
+                        paymentResult?.status === 'expired'
+                      ? () => {
+                          setPaymentRequestId(createPaymentRequestId());
+                          setPaymentResult(null);
+                          setErrorMsg(
+                            'Review the payment again with a fresh fee quote. A new request will be submitted only after you approve.'
+                          );
+                          fetchLiveFeeForReview(recipient, amount);
+                        }
+                      : handleExecuteSend
+                  }
+                  disabled={isSending || (isOffline && !paymentResult)}
                 >
                   {isSending ? (
                     <ActivityIndicator color="#FFFFFF" />
                   ) : (
-                    <Text style={styles.sendPrimaryText}>{paymentResult?.status === 'successful' ? 'Done' : paymentResult?.status === 'pending' || paymentResult?.status === 'outcome-unknown' ? 'Check status' : paymentResult?.status === 'failed' ? 'Review a new payment' : 'Approve & Send'}</Text>
+                    <Text style={styles.sendPrimaryText}>
+                      {paymentResult?.status === 'successful'
+                        ? 'Done'
+                        : paymentResult?.status === 'pending' ||
+                          paymentResult?.status === 'submitted' ||
+                          paymentResult?.status === 'outcome-unknown'
+                        ? 'Check status'
+                        : paymentResult?.status === 'failed' ||
+                          paymentResult?.status === 'dropped' ||
+                          paymentResult?.status === 'expired'
+                        ? 'Review a new payment'
+                        : isOffline
+                        ? 'Broadcast Disabled Offline'
+                        : 'Approve & Send'}
+                    </Text>
                   )}
                 </TouchableOpacity>
+
+                {!paymentResult && (isOffline || Boolean(feeQuoteError)) ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.sendPrimaryBtn,
+                      { backgroundColor: '#B45309', marginTop: 8 },
+                    ]}
+                    onPress={handleSaveOfflineDraft}
+                  >
+                    <Text style={styles.sendPrimaryText}>
+                      Save as Offline Draft (“Draft — not sent”)
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
                 <TouchableOpacity
                   style={styles.sendBackBtn}
                   onPress={() => {
@@ -1675,31 +2127,498 @@ export default function HomeScreen({
         </View>
       </Modal>
 
+      {/* ===================================================================== */}
+      {/* BANK DEPOSIT CONVERTED TO USDT MODAL                                 */}
+      {/* ===================================================================== */}
+      <Modal
+        visible={showDepositModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowDepositModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <ScrollView
+            style={{ maxHeight: '92%' }}
+            contentContainerStyle={styles.sendSheet}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.sendHeader}>
+              <Text style={styles.sendTitle}>
+                {depositStep === 1
+                  ? 'Deposit Fiat → USDT'
+                  : depositStep === 2
+                  ? 'Bank Transfer Instructions'
+                  : 'Deposit Received & Converted'}
+              </Text>
+              <TouchableOpacity onPress={() => setShowDepositModal(false)}>
+                <Ionicons name="close" size={24} color="#334155" />
+              </TouchableOpacity>
+            </View>
+
+            {depositError ? (
+              <View style={styles.errorBox}>
+                <Ionicons name="alert-circle" size={16} color="#DC2626" />
+                <Text style={styles.errorText}>{depositError}</Text>
+              </View>
+            ) : null}
+
+            {depositStep === 1 ? (
+              <>
+                <Text style={styles.fieldLabel}>Select Deposit Currency & Corridor</Text>
+                <View style={styles.depositCorridorGrid}>
+                  {[
+                    { code: 'ZA-ZAR', country: 'South Africa', currency: 'ZAR', rate: 18.35, rail: 'PayShap / EFT' },
+                    { code: 'KE-KES', country: 'Kenya', currency: 'KES', rate: 130.50, rail: 'M-Pesa / Bank' },
+                    { code: 'NG-NGN', country: 'Nigeria', currency: 'NGN', rate: 1450.00, rail: 'NIP Transfer' },
+                    { code: 'GB-GBP', country: 'United Kingdom', currency: 'GBP', rate: 0.79, rail: 'Faster Payments' },
+                    { code: 'EU-EUR', country: 'Europe', currency: 'EUR', rate: 0.92, rail: 'SEPA Instant' },
+                  ].map((c) => {
+                    const isSelected = depositCorridorCode === c.code;
+                    return (
+                      <TouchableOpacity
+                        key={c.code}
+                        style={[styles.depositCorridorCard, isSelected && styles.depositCorridorCardActive]}
+                        onPress={() => setDepositCorridorCode(c.code)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.depositCorridorName, isSelected && styles.depositCorridorNameActive]}>
+                          {c.country} ({c.currency})
+                        </Text>
+                        <Text style={styles.depositCorridorRail}>{c.rail}</Text>
+                        <Text style={styles.depositCorridorRate}>
+                          1 USD = {c.rate.toFixed(2)} {c.currency}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <View style={styles.amountInputGroup}>
+                  <Text style={styles.fieldLabel}>
+                    Deposit Amount in {activeDepositCorridor.currency}
+                  </Text>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.currencyPrefixText}>
+                      {activeDepositCorridor.symbol || activeDepositCorridor.currency}
+                    </Text>
+                    <TextInput
+                      style={styles.amountTextInput}
+                      value={depositAmountFiat}
+                      onChangeText={setDepositAmountFiat}
+                      placeholder="1000"
+                      placeholderTextColor="#94A3B8"
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </View>
+
+                {/* Conversion Preview Box */}
+                <View style={styles.depositPreviewCard}>
+                  <View style={styles.depositPreviewRow}>
+                    <Text style={styles.depositPreviewLabel}>Live Benchmark Rate</Text>
+                    <Text style={styles.depositPreviewVal}>
+                      1 USDT = {depositRate.toFixed(2)} {activeDepositCorridor.currency}
+                    </Text>
+                  </View>
+                  <View style={styles.depositPreviewRow}>
+                    <Text style={styles.depositPreviewLabel}>Network / Processing Fee</Text>
+                    <Text style={[styles.depositPreviewVal, { color: '#059669' }]}>
+                      $0.00 (0% Promo Fee)
+                    </Text>
+                  </View>
+                  <View style={[styles.depositPreviewRow, styles.depositPreviewTotal]}>
+                    <Text style={styles.depositPreviewTotalLabel}>You will receive</Text>
+                    <Text style={styles.depositPreviewTotalVal}>
+                      ~{depositUsdtEstimate} USDT
+                    </Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.sendActionBtn}
+                  onPress={handleReviewDeposit}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.sendActionText}>Review Bank Transfer Details</Text>
+                  <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+                </TouchableOpacity>
+              </>
+            ) : depositStep === 2 ? (
+              <>
+                <View style={styles.bankDetailsCard}>
+                  <Text style={styles.bankDetailsTitle}>Bank Transfer Beneficiary</Text>
+                  <Text style={styles.bankDetailsSub}>
+                    Transfer exactly {activeDepositCorridor.symbol || ''}{' '}
+                    {Number(depositAmountFiat).toLocaleString()} {activeDepositCorridor.currency} using your banking app to the account below.
+                  </Text>
+
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailRowLabel}>Beneficiary Bank</Text>
+                    <Text style={styles.detailRowVal}>Standard Bank / Partner Clearing</Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailRowLabel}>Account / ShapID</Text>
+                    <Text style={styles.detailRowVal}>082 123 4567 / deposit@interlink</Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailRowLabel}>Deposit Reference</Text>
+                    <Text style={[styles.detailRowVal, { color: '#00B87A', fontWeight: '900' }]}>
+                      {depositReference}
+                    </Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailRowLabel}>Converted Amount</Text>
+                    <Text style={styles.detailRowVal}>${depositUsdtEstimate} USDT</Text>
+                  </View>
+                </View>
+
+                <View style={styles.setupRequiredBox}>
+                  <View style={styles.setupRequiredHeader}>
+                    <Ionicons name="information-circle-outline" size={18} color="#059669" />
+                    <Text style={[styles.setupRequiredTitle, { color: '#065F46' }]}>
+                      Testnet Deposit Settlement
+                    </Text>
+                  </View>
+                  <Text style={styles.setupRequiredText}>
+                    In production, the banking gateway automatically credits USDT once the EFT clears. In this Sepolia environment, confirming below validates your simulated bank deposit and credits test funds immediately.
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.sendActionBtn, depositLoading && { opacity: 0.7 }]}
+                  onPress={handleConfirmDeposit}
+                  disabled={depositLoading}
+                  activeOpacity={0.8}
+                >
+                  {depositLoading ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.sendActionText}>Confirm Bank Transfer</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.sendBackBtn}
+                  onPress={() => setDepositStep(1)}
+                  disabled={depositLoading}
+                >
+                  <Text style={styles.sendBackText}>Back to Amount & Currency</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <View style={styles.receiptContainer}>
+                  <View style={styles.receiptIconCircle}>
+                    <Ionicons name="checkmark-circle" size={54} color="#059669" />
+                  </View>
+                  <Text style={styles.receiptTitle}>Deposit Converted to USDT!</Text>
+                  <Text style={styles.receiptAmount}>
+                    +${depositReceipt?.usdtCredited.toFixed(2)} USDT
+                  </Text>
+                  <Text style={styles.receiptSub}>
+                    Converted from {depositReceipt?.fiatCurrency}{' '}
+                    {Number(depositReceipt?.fiatAmount).toLocaleString()} at 1 USDT ={' '}
+                    {depositReceipt?.exchangeRate.toFixed(2)} {depositReceipt?.fiatCurrency}.
+                  </Text>
+
+                  <View style={styles.receiptInfoBox}>
+                    <View style={styles.receiptRow}>
+                      <Text style={styles.receiptLabel}>Deposit Reference</Text>
+                      <Text style={styles.receiptVal}>{depositReceipt?.reference}</Text>
+                    </View>
+                    <View style={styles.receiptRow}>
+                      <Text style={styles.receiptLabel}>Status</Text>
+                      <Text style={[styles.receiptVal, { color: '#059669', fontWeight: '800' }]}>
+                        {depositReceipt?.status}
+                      </Text>
+                    </View>
+                    <View style={[styles.receiptRow, { borderBottomWidth: 0 }]}>
+                      <Text style={styles.receiptLabel}>Timestamp</Text>
+                      <Text style={styles.receiptVal}>
+                        {depositReceipt?.timestamp
+                          ? new Date(depositReceipt.timestamp).toLocaleTimeString()
+                          : ''}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.sendActionBtn}
+                  onPress={() => {
+                    setShowDepositModal(false);
+                    if (onRefresh) onRefresh();
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.sendActionText}>Done</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* 2B. SAVED OFFLINE PAYMENT DRAFTS ("Draft — not sent") */}
+      {offlineDrafts.length > 0 ? (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Saved Payment Drafts (Not Sent)</Text>
+            <Text style={{ fontSize: 12, color: '#B45309', fontWeight: '700' }}>
+              Unsigned · Awaiting Online Review
+            </Text>
+          </View>
+          <View style={styles.transactionContainer}>
+            {offlineDrafts.map((draft, idx) => (
+              <View
+                key={draft.draftId}
+                style={[
+                  styles.transactionItem,
+                  { flexDirection: 'column', alignItems: 'stretch', gap: 8 },
+                  idx === offlineDrafts.length - 1 && { borderBottomWidth: 0 },
+                ]}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.txTitle}>
+                      ${Number(draft.amountUsdt || 0).toFixed(2)} {draft.tokenSymbol || 'USDT'} →{' '}
+                      {String(draft.recipient || '').slice(0, 8)}...
+                      {String(draft.recipient || '').slice(-6)}
+                    </Text>
+                    <Text style={styles.txDate}>
+                      Saved {draft.createdAt ? new Date(draft.createdAt).toLocaleTimeString() : ''} ·{' '}
+                      {draft.networkName || 'Ethereum Sepolia'}
+                    </Text>
+                  </View>
+                  <View
+                    style={{
+                      backgroundColor: '#FEF3C7',
+                      paddingHorizontal: 10,
+                      paddingVertical: 4,
+                      borderRadius: 12,
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: '#92400E' }}>
+                      {draft.statusLabel || 'Draft — not sent'}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={{ fontSize: 12, color: '#64748B', lineHeight: 17 }}>
+                  {draft.offlineSigningReason ||
+                    'Draft — not sent. Not signed or broadcast on-chain. Review live fees and balance when online before approving.'}
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity
+                    style={[
+                      styles.sendPrimaryBtn,
+                      { flex: 1, marginTop: 0, paddingVertical: 10 },
+                    ]}
+                    onPress={() => handleOpenDraftForReview(draft)}
+                  >
+                    <Text style={[styles.sendPrimaryText, { fontSize: 13 }]}>
+                      {isOffline ? 'Inspect Draft' : 'Review & Send Online'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.sendBackBtn,
+                      {
+                        marginTop: 0,
+                        paddingVertical: 10,
+                        paddingHorizontal: 14,
+                        backgroundColor: '#FEE2E2',
+                      },
+                    ]}
+                    onPress={async () => {
+                      await deleteOfflinePaymentDraft(draft.draftId, walletScopeKey);
+                      await reloadLocalJournalAndDrafts();
+                    }}
+                  >
+                    <Text style={[styles.sendBackText, { color: '#991B1B', fontSize: 13 }]}>
+                      Discard
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {/* 2C. LOCAL DURABLE WDK PAYMENT JOURNAL & STATUS RECONCILIATION */}
+      {paymentJournal.length > 0 ? (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Payment Journal & Status</Text>
+            <TouchableOpacity onPress={reloadLocalJournalAndDrafts} style={styles.refreshBtn}>
+              <Ionicons name="refresh-outline" size={18} color="#64748B" />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.transactionContainer}>
+            {paymentJournal.slice(0, 6).map((rec, idx) => {
+              const pres = getPaymentStatusPresentation(rec, isOffline);
+              const isChecking = checkingRequestId === rec.requestId;
+              const isLast = idx === Math.min(paymentJournal.length, 6) - 1;
+              return (
+                <View
+                  key={rec.requestId}
+                  style={[
+                    styles.transactionItem,
+                    { flexDirection: 'column', alignItems: 'stretch', gap: 6 },
+                    isLast && { borderBottomWidth: 0 },
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={styles.txTitle}>
+                      ${Number(rec.amountUsdt || 0).toFixed(2)} {rec.tokenSymbol || 'USDT'} →{' '}
+                      {String(rec.recipient || '').slice(0, 8)}...
+                      {String(rec.recipient || '').slice(-6)}
+                    </Text>
+                    <View
+                      style={{
+                        backgroundColor:
+                          pres.tone === 'success'
+                            ? '#ECFDF5'
+                            : pres.tone === 'danger'
+                            ? '#FEF2F2'
+                            : '#FEF3C7',
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                        borderRadius: 12,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: '800',
+                          color:
+                            pres.tone === 'success'
+                              ? '#059669'
+                              : pres.tone === 'danger'
+                              ? '#DC2626'
+                              : '#92400E',
+                        }}
+                      >
+                        {pres.badge}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text style={{ fontSize: 12, color: '#475569', lineHeight: 17 }}>
+                    {pres.headline}
+                  </Text>
+
+                  <Text style={styles.txDate}>
+                    Request ID: {String(rec.requestId).slice(0, 22)}...
+                    {rec.lastCheckedAt
+                      ? ` · Checked ${new Date(rec.lastCheckedAt).toLocaleTimeString()}`
+                      : ''}
+                  </Text>
+
+                  {rec.userOperationHash ? (
+                    <Text style={styles.txDate} selectable>
+                      UserOp Hash: {rec.userOperationHash.slice(0, 14)}...
+                      {rec.userOperationHash.slice(-8)}
+                    </Text>
+                  ) : null}
+
+                  {rec.transactionHash ? (
+                    <Text style={[styles.txDate, { color: '#059669', fontWeight: '700' }]} selectable>
+                      On-Chain Tx Hash: {rec.transactionHash.slice(0, 14)}...
+                      {rec.transactionHash.slice(-8)}
+                    </Text>
+                  ) : null}
+
+                  {pres.canCheckStatus ? (
+                    <TouchableOpacity
+                      style={[
+                        styles.sendBackBtn,
+                        {
+                          marginTop: 4,
+                          paddingVertical: 9,
+                          backgroundColor: '#EFF6FF',
+                        },
+                      ]}
+                      onPress={() => handleCheckJournalRecordStatus(rec)}
+                      disabled={isChecking || isOffline}
+                    >
+                      {isChecking ? (
+                        <ActivityIndicator size="small" color="#1D4ED8" />
+                      ) : (
+                        <Text style={[styles.sendBackText, { color: '#1D4ED8', fontSize: 13 }]}>
+                          {isOffline ? 'Reconnect to Check Status' : 'Check Status On-Chain'}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+
       {/* 3. ASSETS LIST */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Portfolio Assets</Text>
-          <TouchableOpacity onPress={() => onNavigate('markets')}>
-            <Text style={styles.sectionLink}>View Markets ⟶</Text>
-          </TouchableOpacity>
+          <View>
+            <Text style={styles.sectionTitle}>Portfolio Assets</Text>
+            {lastUpdatedLabel ? (
+              <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                {isOffline || wallet?.isCachedBalance
+                  ? `Cached snapshot · Last updated ${lastUpdatedLabel}`
+                  : `Live Sepolia RPC · Last updated ${lastUpdatedLabel}`}
+              </Text>
+            ) : null}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+            <TouchableOpacity onPress={() => onNavigate('assets')}>
+              <Text style={[styles.sectionLink, { color: '#00B87A' }]}>Holdings ⟶</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => onNavigate('markets')}>
+              <Text style={styles.sectionLink}>Markets ⟶</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.assetListContainer}>
-          <View style={styles.assetRow}>
+          <View style={[styles.assetRow, { borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingBottom: 12, marginBottom: 12 }]}>
             <View style={[styles.assetRowIcon, { backgroundColor: '#ECFDF5' }]}>
               <Text style={{ fontSize: 20, color: '#059669', fontWeight: '800' }}>$</Text>
             </View>
             <View style={styles.assetRowInfo}>
-              <Text style={styles.assetRowName}>Tether USD (Sepolia)</Text>
+              <Text style={styles.assetRowName}>Tether USD (Sepolia Test-Only)</Text>
               <Text style={styles.assetRowSub}>
-                USDT · Chain ID {SUPPORTED_WALLET_CONFIG.chainId}
+                USDT · Chain ID {SUPPORTED_WALLET_CONFIG.chainId} · No monetary value
               </Text>
             </View>
             <View style={styles.assetRowValues}>
               <Text style={styles.assetRowAmount}>
                 {usdtBalance == null ? 'Wallet Setup Req.' : `$${usdtBalance.toFixed(2)}`}
               </Text>
-              <Text style={styles.assetRowChange}>ERC-20 Testnet</Text>
+              <Text style={styles.assetRowChange}>
+                {isOffline || wallet?.isCachedBalance ? 'Cached ERC-20' : 'ERC-20 Testnet'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.assetRow}>
+            <View style={[styles.assetRowIcon, { backgroundColor: '#EFF6FF' }]}>
+              <Text style={{ fontSize: 18, color: '#2563EB', fontWeight: '800' }}>Ξ</Text>
+            </View>
+            <View style={styles.assetRowInfo}>
+              <Text style={styles.assetRowName}>Sepolia ETH (Gas Asset)</Text>
+              <Text style={styles.assetRowSub}>
+                ETH · ERC-4337 EntryPoint v0.7 Gas Balance
+              </Text>
+            </View>
+            <View style={styles.assetRowValues}>
+              <Text style={styles.assetRowAmount}>
+                {ethBalanceFormatted == null ? '—' : `${ethBalanceFormatted} ETH`}
+              </Text>
+              <Text style={styles.assetRowChange}>
+                {isOffline || wallet?.isCachedBalance ? 'Cached Gas' : 'Testnet Gas'}
+              </Text>
             </View>
           </View>
         </View>
@@ -1708,7 +2627,16 @@ export default function HomeScreen({
       {/* 4. TRANSACTIONS */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Recent Activity</Text>
+          <View>
+            <Text style={styles.sectionTitle}>Recent Activity</Text>
+            {lastUpdatedLabel ? (
+              <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                {isOffline
+                  ? `Offline cached history · Last updated ${lastUpdatedLabel}`
+                  : `Synced · Last updated ${lastUpdatedLabel}`}
+              </Text>
+            ) : null}
+          </View>
           <TouchableOpacity onPress={onRefresh} style={styles.refreshBtn}>
             <Ionicons name="refresh-outline" size={18} color="#64748B" />
           </TouchableOpacity>
@@ -2311,4 +3239,158 @@ const styles = StyleSheet.create({
   txDate: { fontSize: 12, color: '#64748B', fontWeight: '500', textTransform: 'capitalize' },
   emptyState: { paddingVertical: 40, alignItems: 'center', justifyContent: 'center', gap: 12 },
   emptyTransactions: { color: '#94A3B8', fontSize: 13, fontWeight: '500', textAlign: 'center' },
+
+  /* --- 5. DEPOSIT MODAL STYLES --- */
+  depositCorridorGrid: {
+    gap: 10,
+    marginBottom: 16,
+  },
+  depositCorridorCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 12,
+  },
+  depositCorridorCardActive: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#059669',
+  },
+  depositCorridorName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0A0F1C',
+  },
+  depositCorridorNameActive: {
+    color: '#059669',
+  },
+  depositCorridorRail: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  depositCorridorRate: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#00B87A',
+    marginTop: 2,
+  },
+  depositPreviewCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 14,
+    marginBottom: 16,
+  },
+  depositPreviewRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  depositPreviewLabel: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  depositPreviewVal: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0A0F1C',
+  },
+  depositPreviewTotal: {
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    paddingTop: 10,
+    marginTop: 4,
+    marginBottom: 0,
+  },
+  depositPreviewTotalLabel: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0A0F1C',
+  },
+  depositPreviewTotalVal: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#059669',
+  },
+  bankDetailsCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 16,
+    marginBottom: 14,
+  },
+  bankDetailsTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0A0F1C',
+  },
+  bankDetailsSub: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 4,
+    marginBottom: 12,
+    lineHeight: 16,
+  },
+  receiptContainer: {
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  receiptIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#ECFDF5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  receiptTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0A0F1C',
+  },
+  receiptAmount: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#059669',
+    marginTop: 6,
+  },
+  receiptSub: {
+    fontSize: 12,
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: 6,
+    marginBottom: 20,
+    lineHeight: 16,
+  },
+  receiptInfoBox: {
+    width: '100%',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 14,
+    marginBottom: 20,
+  },
+  receiptRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  receiptLabel: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  receiptVal: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0A0F1C',
+  },
 });
