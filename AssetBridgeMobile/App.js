@@ -232,7 +232,8 @@ export default function App() {
           }} />
         ) : currentTab === 'wallet' && (
           <HomeScreen 
-            wallet={wallet} 
+            wallet={wallet}
+            currentUser={session?.user}
             onRefresh={async () => { setRefreshing(true); await loadWallet(); setRefreshing(false); }}
             onTransfer={async (transfer) => {
               const result = await mobileWalletService.transfer(transfer);

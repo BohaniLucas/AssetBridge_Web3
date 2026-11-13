@@ -1565,6 +1565,220 @@ class RemittanceService {
     const { recipientPhoneE164Internal, recipientPhoneHash, ...safe } = transfer;
     return safe;
   }
+
+  /**
+   * Formal audit of outbound fiat payout provider readiness.
+   * Configuring an API key or webhook secret alone is NOT proof of an outbound provider integration.
+   */
+  auditOutboundPayoutProvider() {
+    const checklist = {
+      documentedProviderRequestClient: false,
+      providerAuthenticationVerified: false,
+      recipientShapIdOrAccountVerification: false,
+      outboundIdempotencyAndResponseHandling: false,
+      webhookSignatureVerification: true,
+      reconciliationAndSettlementPath: false,
+    };
+    const outboundProviderIntegrated = Object.values(checklist).every(Boolean);
+
+    return {
+      outboundProviderIntegrated,
+      checklist,
+      providerName: 'Unconfigured (SARB ADLA / PayShap Partner Onboarding Required)',
+      auditSummary:
+        'Outbound local-currency withdrawal is disabled: Although webhook HMAC verification is implemented, no licensed South African PayShap / bank disbursement outbound API client, ShapID proxy directory lookup, or settlement reconciliation path is integrated yet.',
+    };
+  }
+
+  /**
+   * Returns truthful withdrawal corridors, verified user-owned destinations, and step-up policy.
+   */
+  async getWithdrawOptions(user) {
+    const allDestinations = await this.getAllDestinations();
+    const providerAudit = this.auditOutboundPayoutProvider();
+
+    const corridors = allDestinations
+      .filter((c) => c.corridorCode !== 'APP-USDT')
+      .map((c) => {
+        const isZaZar = c.corridorCode === 'ZA-ZAR';
+        return {
+          corridorCode: c.corridorCode,
+          country: c.country,
+          currency: c.currency,
+          currencySymbol: c.currencySymbol,
+          flag: c.flag,
+          ratePerUsd: c.ratePerUsd,
+          rateType: c.rateType,
+          rateSource: c.rateSource,
+          rateUpdatedAt: c.rateUpdatedAt,
+          corridorStatus: providerAudit.outboundProviderIntegrated
+            ? c.corridorStatus
+            : 'partner_onboarding_required',
+          isExecutable: false,
+          availabilityLabel: isZaZar
+            ? 'Preview Only — Licensed PayShap / Bank outbound payout provider not yet integrated'
+            : 'Not available yet — Corridor partner not connected',
+          payoutMethods: (c.rails || [])
+            .filter((r) => r.id !== 'za_gogo_claim')
+            .map((r) => ({
+              id: r.id,
+              label: r.label,
+              type: r.type,
+              providerName: r.providerName,
+              settlementWindow:
+                'Subject to licensed bank/PayShap partner settlement (not instant without verified provider)',
+              isSupported: isZaZar,
+              isExecutable: false,
+              requiresVerifiedDestination: true,
+              statusLabel: isZaZar
+                ? 'Disabled — Outbound provider & ShapID verification required'
+                : 'Not available yet',
+              regulatoryDisclosure:
+                r.id === 'za_payshap_proxy'
+                  ? 'PayShap is South Africa-only (+27) and usable only for a registered ShapID linked to your own verified account at a participating South African bank. It is not a universal phone-to-bank rail.'
+                  : 'Requires a verified bank account in the signed-in user’s own name.',
+            })),
+        };
+      });
+
+    return {
+      userId: user.id,
+      sourceAsset: {
+        symbol: 'USDT',
+        name: 'Tether USD (Sepolia)',
+        network: 'Ethereum Sepolia (ChainID: 11155111)',
+        chainId: 11155111,
+        tokenContract: '0x7169D38820dfd117C3FA1f22a697dBA58d90BA06',
+        decimals: 6,
+      },
+      providerAudit,
+      corridors,
+      // Only destinations verified by an integrated banking/PayShap provider for this user may appear here.
+      // Client-entered phone numbers can never become verified bank destinations on their own.
+      verifiedDestinations: [],
+      policy: {
+        requiresStepUpReauth: true,
+        maxStepUpAgeSeconds: 120,
+        perTransactionLimitUsdt: '500.00',
+        dailyLimitUsdt: '2000.00',
+        newDestinationCoolingOffHours: 24,
+      },
+    };
+  }
+
+  /**
+   * Generates a backend-signed withdrawal quote using integer minor-unit math and live reference FX.
+   */
+  async createWithdrawQuote({ user, corridorCode = 'ZA-ZAR', payoutMethod = 'za_payshap_proxy', sendAmount }) {
+    if (!user || !user.id) {
+      const err = new Error('Authentication is required to request a withdrawal quote.');
+      err.status = 401;
+      throw err;
+    }
+
+    if (corridorCode === 'APP-USDT') {
+      const err = new Error('Withdrawals to local currency must select a fiat corridor (e.g. ZA-ZAR).');
+      err.status = 400;
+      throw err;
+    }
+
+    const sendAmountMinor = parseMajorToMinor(sendAmount, USDT_DECIMALS);
+    const maxPerTxMinor = parseMajorToMinor('500.00', USDT_DECIMALS);
+    if (sendAmountMinor > maxPerTxMinor) {
+      const err = new Error(
+        'Withdrawal amount exceeds the per-transaction security limit of $500.00 USDT.'
+      );
+      err.status = 400;
+      throw err;
+    }
+
+    const baseQuote = await this.createQuote({
+      userId: user.id,
+      corridorCode,
+      payoutRail: payoutMethod,
+      flowType: 'phone_payout',
+      sendAmountUsdt: String(sendAmount),
+    });
+
+    const providerAudit = this.auditOutboundPayoutProvider();
+
+    return {
+      ...baseQuote,
+      withdrawalQuote: true,
+      sourceToken: 'USDT',
+      sourceNetwork: 'Ethereum Sepolia (ChainID: 11155111)',
+      tokenContract: '0x7169D38820dfd117C3FA1f22a697dBA58d90BA06',
+      isExecutable: false,
+      verifiedDestination: null,
+      providerAudit,
+      estimatedTiming:
+        'Subject to licensed partner settlement once onboarded (no instant payout claim without verified provider)',
+      riskWarnings: [
+        'Recent step-up password reauthentication is required before withdrawal approval.',
+        'Withdrawals pay out only to the signed-in user’s own provider-verified bank account or registered South African PayShap ShapID.',
+        'Newly verified destinations are subject to a 24-hour cooling-off security hold.',
+        'PayShap is South Africa-only and is not a universal phone-to-bank rail.',
+      ],
+      submissionDisabledReason:
+        'Withdrawal submission is disabled: No licensed outbound payout provider is integrated and no provider-verified destination is linked to your account. No funds will be debited.',
+    };
+  }
+
+  /**
+   * Withdrawal execution endpoint — enforces ownership, rejects arbitrary phone numbers,
+   * checks step-up authentication, and fails closed until an outbound payout provider is integrated.
+   */
+  async executeWithdrawal({
+    user,
+    quoteId,
+    destinationId,
+    rawPhoneNumber,
+    idempotencyKey,
+  }) {
+    if (!user || !user.id) {
+      const err = new Error('Authentication required.');
+      err.status = 401;
+      throw err;
+    }
+    if (!idempotencyKey || String(idempotencyKey).trim().length < 8) {
+      const err = new Error('A valid idempotencyKey is required for withdrawal requests.');
+      err.status = 400;
+      throw err;
+    }
+    if (rawPhoneNumber) {
+      const err = new Error(
+        'Security policy violation: Arbitrary client-entered phone numbers cannot be used as withdrawal destinations. Only a provider-verified destination owned by the signed-in user is permitted.'
+      );
+      err.status = 400;
+      throw err;
+    }
+    if (!quoteId) {
+      const err = new Error('quoteId is required.');
+      err.status = 400;
+      throw err;
+    }
+
+    const providerAudit = this.auditOutboundPayoutProvider();
+    if (!providerAudit.outboundProviderIntegrated) {
+      const err = new Error(
+        `${providerAudit.auditSummary} No funds were debited and no payout was submitted.`
+      );
+      err.status = 503;
+      throw err;
+    }
+
+    if (!destinationId) {
+      const err = new Error(
+        'A verified payout destination linked to your account is required before withdrawing.'
+      );
+      err.status = 400;
+      throw err;
+    }
+
+    const err = new Error('Verified destination not found for this account. No funds were debited.');
+    err.status = 404;
+    throw err;
+  }
 }
 
 export const remittanceService = new RemittanceService();

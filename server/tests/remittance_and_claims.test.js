@@ -612,3 +612,97 @@ describe('5. Webhook Signature Verification, Idempotency & Payout Failure Refund
   });
 });
 
+// ============================================================================
+// 6. WALLET CONTRACT MASQUERADE GUARD & WITHDRAWAL PROVIDER AUDIT
+// ============================================================================
+describe('6. Wallet Token Contract Guard & Withdrawal Provider Audit', () => {
+  test('GET /api/wallet/:userId never returns Sepolia USDT token contract as user wallet address', async () => {
+    const userAId = '00000000-0000-0000-0000-000000000001';
+    const res = await fetch(`${baseUrl}/wallet/${userAId}`, {
+      headers: { Authorization: USER_A_TOKEN },
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.data.address, null);
+    assert.equal(body.data.walletSetupRequired, true);
+    assert.equal(body.data.isVerifiedUserWallet, false);
+    assert.equal(
+      body.data.tokenContractAddress,
+      '0x7169D38820dfd117C3FA1f22a697dBA58d90BA06'
+    );
+  });
+
+  test('Withdraw options, quote limits, arbitrary phone rejection, and fail-closed execution', async () => {
+    // 1. Options audit reports outboundProviderIntegrated === false and verifiedDestinations === []
+    const optRes = await fetch(`${baseUrl}/remittance/withdraw/options`, {
+      headers: { Authorization: USER_A_TOKEN },
+    });
+    assert.equal(optRes.status, 200);
+    const optBody = await optRes.json();
+    assert.equal(optBody.data.providerAudit.outboundProviderIntegrated, false);
+    assert.deepEqual(optBody.data.verifiedDestinations, []);
+
+    // 2. Quote exceeding $500.00 per-transaction limit is rejected with 400
+    const overLimitRes = await fetch(`${baseUrl}/remittance/withdraw/quote`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: USER_A_TOKEN,
+      },
+      body: JSON.stringify({
+        corridorCode: 'ZA-ZAR',
+        payoutMethod: 'za_payshap_proxy',
+        sendAmount: '600.00',
+      }),
+    });
+    assert.equal(overLimitRes.status, 400);
+
+    // 3. Valid reference withdrawal quote is generated but marked isExecutable: false
+    const quoteRes = await fetch(`${baseUrl}/remittance/withdraw/quote`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: USER_A_TOKEN,
+      },
+      body: JSON.stringify({
+        corridorCode: 'ZA-ZAR',
+        payoutMethod: 'za_payshap_proxy',
+        sendAmount: '50.00',
+      }),
+    });
+    assert.equal(quoteRes.status, 201);
+    const quoteBody = await quoteRes.json();
+    assert.equal(quoteBody.data.isExecutable, false);
+    assert.equal(quoteBody.data.receiveCurrency, 'ZAR');
+
+    // 4. Attempting to pass a raw arbitrary phone number to executeWithdrawal is rejected with 400
+    const rawPhoneExecRes = await fetch(`${baseUrl}/remittance/withdraw/execute`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: USER_A_TOKEN,
+      },
+      body: JSON.stringify({
+        quoteId: quoteBody.data.id,
+        rawPhoneNumber: '+27825550199',
+        idempotencyKey: `idem_wd_phone_${Date.now()}`,
+      }),
+    });
+    assert.equal(rawPhoneExecRes.status, 400);
+
+    // 5. Attempting to execute withdrawal fails closed with 503 while outbound provider is unintegrated
+    const execRes = await fetch(`${baseUrl}/remittance/withdraw/execute`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: USER_A_TOKEN,
+      },
+      body: JSON.stringify({
+        quoteId: quoteBody.data.id,
+        idempotencyKey: `idem_wd_exec_${Date.now()}`,
+      }),
+    });
+    assert.equal(execRes.status, 503);
+  });
+});
+

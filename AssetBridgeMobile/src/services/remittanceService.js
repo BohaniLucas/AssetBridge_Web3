@@ -287,6 +287,53 @@ export const remittanceService = {
     }
     return json.data;
   },
+
+  // --- Wallet Withdraw to Local Currency (Authenticated & Step-Up Gated) ---
+  async getWithdrawOptions() {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/remittance/withdraw/options`, { headers });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.message || 'Unable to load withdrawal options from backend.');
+    }
+    return json.data;
+  },
+
+  async createWithdrawQuote({ corridorCode = 'ZA-ZAR', payoutMethod = 'za_payshap_proxy', sendAmount }) {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/remittance/withdraw/quote`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        corridorCode,
+        payoutMethod,
+        sendAmount: String(sendAmount),
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.message || 'Failed to generate withdrawal quote.');
+    }
+    return json.data;
+  },
+
+  async executeWithdrawal({ quoteId, destinationId, idempotencyKey }) {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/remittance/withdraw/execute`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        quoteId,
+        destinationId,
+        idempotencyKey: idempotencyKey || generateIdempotencyKey('withdraw'),
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.message || 'Withdrawal submission is disabled.');
+    }
+    return json.data;
+  },
 };
 
 export const mobileRemittanceService = remittanceService;

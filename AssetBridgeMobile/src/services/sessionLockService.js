@@ -1,6 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 
 export const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+export const DEFAULT_STEP_UP_MAX_AGE_MS = 2 * 60 * 1000; // 2 minutes for high-risk actions (withdrawals)
 const LAST_ACTIVE_KEY = 'assetbridge_last_active_time';
 const IDLE_TIMEOUT_KEY = 'assetbridge_idle_timeout_ms';
 const LOCK_STATE_KEY = 'assetbridge_session_is_locked';
@@ -8,6 +9,7 @@ const LOCK_STATE_KEY = 'assetbridge_session_is_locked';
 class SessionLockService {
   constructor() {
     this.memoryLastActive = Date.now();
+    this.memoryLastStepUpReauth = 0;
     this.memoryTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS;
     this.memoryIsLocked = false;
     this.lockListeners = new Set();
@@ -98,6 +100,7 @@ class SessionLockService {
    * Authoritatively locks the protected financial UI.
    */
   async lock() {
+    this.memoryLastStepUpReauth = 0;
     this.notifyListeners(true);
     if (await SecureStore.isAvailableAsync()) {
       await SecureStore.setItemAsync(LOCK_STATE_KEY, 'true').catch(() => {});
@@ -108,11 +111,34 @@ class SessionLockService {
    * Unlocks the protected UI after verified reauthentication.
    */
   async unlock() {
+    const now = Date.now();
+    this.memoryLastStepUpReauth = now;
     this.recordActivity();
     this.notifyListeners(false);
     if (await SecureStore.isAvailableAsync()) {
       await SecureStore.setItemAsync(LOCK_STATE_KEY, 'false').catch(() => {});
     }
+  }
+
+  /**
+   * Records a verified password reauthentication for step-up security (e.g. before withdrawal approval).
+   */
+  recordStepUpReauth(now = Date.now()) {
+    this.memoryLastStepUpReauth = now;
+    this.recordActivity();
+  }
+
+  /**
+   * Returns true only if the user completed password reauthentication within maxAgeMs.
+   */
+  hasRecentStepUpReauth(maxAgeMs = DEFAULT_STEP_UP_MAX_AGE_MS, now = Date.now()) {
+    if (this.memoryIsLocked || !this.memoryLastStepUpReauth) return false;
+    return now - this.memoryLastStepUpReauth <= maxAgeMs;
+  }
+
+  getStepUpRemainingSeconds(maxAgeMs = DEFAULT_STEP_UP_MAX_AGE_MS, now = Date.now()) {
+    if (!this.hasRecentStepUpReauth(maxAgeMs, now)) return 0;
+    return Math.max(0, Math.ceil((maxAgeMs - (now - this.memoryLastStepUpReauth)) / 1000));
   }
 
   /**
@@ -134,6 +160,7 @@ class SessionLockService {
 
   async clear() {
     this.memoryIsLocked = false;
+    this.memoryLastStepUpReauth = 0;
     this.memoryLastActive = Date.now();
     if (await SecureStore.isAvailableAsync()) {
       await Promise.all([

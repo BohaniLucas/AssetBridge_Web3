@@ -196,3 +196,46 @@ export const handlePayoutWebhook = (req, res) => {
     return errorResponse(res, err.message, err.status || 400);
   }
 };
+
+export const getWithdrawOptions = async (req, res) => {
+  try {
+    assertNoForgedSender(req);
+    const data = await remittanceService.getWithdrawOptions(req.user);
+    return successResponse(res, data, 'Withdrawal options and provider audit retrieved');
+  } catch (err) {
+    return errorResponse(res, err.message, err.status || 400);
+  }
+};
+
+export const createWithdrawQuote = async (req, res) => {
+  try {
+    assertNoForgedSender(req);
+    const { corridorCode, payoutMethod, sendAmount } = req.body || {};
+    const quote = await remittanceService.createWithdrawQuote({
+      user: req.user,
+      corridorCode,
+      payoutMethod,
+      sendAmount,
+    });
+    return successResponse(res, quote, 'Withdrawal quote generated', 201);
+  } catch (err) {
+    return errorResponse(res, err.message, err.status || 400);
+  }
+};
+
+export const executeWithdrawal = async (req, res) => {
+  try {
+    assertNoForgedSender(req);
+    const { quoteId, destinationId, rawPhoneNumber, idempotencyKey } = req.body || {};
+    const result = await remittanceService.executeWithdrawal({
+      user: req.user,
+      quoteId,
+      destinationId,
+      rawPhoneNumber,
+      idempotencyKey,
+    });
+    return successResponse(res, result, 'Withdrawal submitted');
+  } catch (err) {
+    return errorResponse(res, err.message, err.status || 503);
+  }
+};

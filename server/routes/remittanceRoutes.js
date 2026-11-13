@@ -14,6 +14,9 @@ import {
   getUserTransfers,
   getTransferById,
   handlePayoutWebhook,
+  getWithdrawOptions,
+  createWithdrawQuote,
+  executeWithdrawal,
 } from '../controllers/remittanceController.js';
 
 const router = express.Router();
@@ -51,7 +54,12 @@ router.post('/transfers/:id/refund', requireAuth, remittanceActionLimiter, refun
 // 5. Authenticated Provider Webhook (HMAC-SHA256 signature verified, idempotent)
 router.post('/webhooks/payout', handlePayoutWebhook);
 
-// 6. Legacy direct simulated send endpoint remains strictly fail-closed (503)
+// 6. Authenticated Wallet Withdraw to Local Currency Routes
+router.get('/withdraw/options', requireAuth, getWithdrawOptions);
+router.post('/withdraw/quote', requireAuth, remittanceActionLimiter, createWithdrawQuote);
+router.post('/withdraw/execute', requireAuth, remittanceActionLimiter, executeWithdrawal);
+
+// 7. Legacy direct simulated send endpoint remains strictly fail-closed (503)
 router.get('/quote', financialFeatureUnavailable);
 router.post('/send', requireAuth, financialFeatureUnavailable);
 

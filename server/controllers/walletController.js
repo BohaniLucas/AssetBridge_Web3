@@ -22,20 +22,26 @@ export const getWallet = async (req, res) => {
       return errorResponse(res, 'You can only query the wallet linked to your authenticated account.', 403);
     }
 
-    // Return test wallet ONLY when explicitly enabled in non-production
-    if (
-      isDevTestAccountEnabled() &&
-      (userId === '00000000-0000-0000-0000-000000000001' || userId === 'test@assetbridge.africa')
-    ) {
-      return successResponse(res, {
-        userId: '00000000-0000-0000-0000-000000000001',
-        address: '0x7169D38820dfd117C3FA1f22a697dBA58d90BA06',
-        balanceUsdt: '0.00',
+    // Never return the Sepolia USDT token contract (0x7169D38820dfd117C3FA1f22a697dBA58d90BA06)
+    // or any escrow/sample address as a user's personal wallet address.
+    return successResponse(
+      res,
+      {
+        userId: req.user.id,
+        address: null,
+        walletSetupRequired: true,
+        isVerifiedUserWallet: false,
+        balanceUsdt: null,
         currency: 'USDT',
+        tokenContractAddress: walletService.contractAddress || '0x7169D38820dfd117C3FA1f22a697dBA58d90BA06',
+        decimals: 6,
+        chainId: 11155111,
         network: 'Ethereum Sepolia (ChainID: 11155111)',
-      }, 'Test wallet loaded');
-    }
-    return errorResponse(res, 'No user-controlled WDK wallet is linked to this account. Legacy server-generated wallet records require secure migration before they can be used.', 404);
+        setupReason:
+          'Wallet setup required — No verified user-controlled WDK wallet address is linked to this account yet.',
+      },
+      'Wallet setup status retrieved'
+    );
   } catch (err) {
     return errorResponse(res, err.message, 500);
   }
