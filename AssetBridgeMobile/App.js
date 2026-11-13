@@ -10,8 +10,12 @@ import {
   Alert,
   Animated,
   AppState,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { WdkAppProvider, useAccount, useBalance, useWalletManager, useWdkApp, BaseAsset } from '@tetherto/wdk-react-native-core';
+import { bundle } from './.wdk';
 
 import HomeScreen from './src/screens/HomeScreen';
 import RemittanceScreen from './src/screens/RemittanceScreen';
@@ -19,15 +23,18 @@ import StokvelScreen from './src/screens/StokvelScreen';
 import MarketsScreen from './src/screens/MarketsScreen';
 import CreatePotScreen from './src/screens/CreatePotScreen';
 import AuthFlowScreen from './src/screens/AuthFlowScreen';
+import WalletSetupScreen from './src/screens/WalletSetupScreen';
 import SessionLockOverlay from './src/components/SessionLockOverlay';
 import { mobileAuthService } from './src/services/authService';
-import { mobileWalletService } from './src/services/walletService';
+import { isSafePersonalEvmAddress, parseUsdtToBaseUnits } from './src/services/walletService';
+import { assetBridgeUsdt, wdkConfigs } from './src/config/wdk';
+import { createPaymentRequestId, quoteUsdtTransfer, submitOrCheckUsdtTransfer } from './src/services/wdkPaymentService';
 import { mobilePotsService } from './src/services/potsService';
 import { sessionLockService } from './src/services/sessionLockService';
 
 // --- CUSTOM ANIMATED TAB BUTTON ---
 const AnimatedTabButton = ({ item, isFocused, onPress }) => {
-  const animatedWidth = useRef(new Animated.Value(isFocused ? 1 : 0)).current;
+  const [animatedWidth] = useState(() => new Animated.Value(isFocused ? 1 : 0));
 
   useEffect(() => {
     Animated.spring(animatedWidth, {
@@ -36,7 +43,7 @@ const AnimatedTabButton = ({ item, isFocused, onPress }) => {
       friction: 8,
       useNativeDriver: false, // Must be false for layout animation (width/padding)
     }).start();
-  }, [isFocused]);
+  }, [isFocused, animatedWidth]);
 
   // Interpolations for smooth transitions
   const pillPadding = animatedWidth.interpolate({
@@ -80,13 +87,37 @@ const AnimatedTabButton = ({ item, isFocused, onPress }) => {
   );
 };
 
+const WDK_USDT_ASSET = new BaseAsset(assetBridgeUsdt);
+
+function walletIdForUser(userId) {
+  return `assetbridge-${String(userId).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+}
+
+function WdkRuntime() {
+  const { state: wdkState } = useWdkApp();
+  const walletManager = useWalletManager();
+  const { account, address } = useAccount({ network: 'ethereum', accountIndex: 0 });
+  const balance = useBalance(0, WDK_USDT_ASSET, { refetchInterval: 30000 });
+  return <AppShell wdk={{ state: wdkState, walletManager, account, address, balance }} />;
+}
+
 export default function App() {
+  return (
+    <WdkAppProvider bundle={{ bundle }} wdkConfigs={wdkConfigs}>
+      <WdkRuntime />
+    </WdkAppProvider>
+  );
+}
+
+function AppShell({ wdk }) {
   const [currentTab, setCurrentTab] = useState('wallet');
-  const [wallet, setWallet] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isLocked, setIsLocked] = useState(false);
+  const [isNewAccount, setIsNewAccount] = useState(false);
+  const [walletSetupRequired, setWalletSetupRequired] = useState(false);
+  const [walletSetupError, setWalletSetupError] = useState('');
+  const walletInitRef = useRef('');
   const appStateRef = useRef(AppState.currentState);
 
   useEffect(() => {
@@ -136,25 +167,55 @@ export default function App() {
     { id: 'markets', label: 'Markets', activeIcon: 'analytics', inactiveIcon: 'analytics-outline' },
   ];
 
+  const walletId = session?.user?.id ? walletIdForUser(session.user.id) : '';
+  const walletReady = Boolean(session?.user?.id && wdk.state?.status === 'READY' && wdk.state.walletId === walletId && wdk.address);
+  const wallet = walletReady
+    ? { userId: session.user.id, address: wdk.address, balanceUsdt: wdk.balance.data?.balance == null ? null : Number(wdk.balance.data.balance) / 1e6, isVerifiedUserWallet: true }
+    : null;
+
+  useEffect(() => {
+    if (!session?.user?.id || isLocked) {
+      walletInitRef.current = '';
+      return undefined;
+    }
+    if (!['NO_WALLET', 'LOCKED', 'READY'].includes(wdk.state?.status)) return undefined;
+    if (wdk.state.status === 'READY' && wdk.state.walletId === walletId) {
+      return undefined;
+    }
+    if (walletInitRef.current === walletId) return undefined;
+    walletInitRef.current = walletId;
+    (async () => {
+      try {
+        if (wdk.state.status === 'READY' || wdk.state.status === 'LOCKED') await wdk.walletManager.lock();
+        await wdk.walletManager.unlock(walletId);
+      } catch (err) {
+        if (session?.user?.id) {
+          walletInitRef.current = '';
+          setWalletSetupRequired(true);
+          setWalletSetupError(err?.message || 'No local wallet is available. Restore your wallet or create a new test wallet.');
+        }
+      }
+    })();
+  }, [session?.user?.id, isLocked, walletId, wdk.state?.status, wdk.state?.walletId, wdk.walletManager]);
+
+  useEffect(() => {
+    if (isLocked && wdk.state?.status === 'READY') {
+      wdk.walletManager.lock().catch(() => {});
+    }
+  }, [isLocked, wdk.state?.status, wdk.walletManager]);
+
   const loadWallet = async () => {
-    if (!session?.user?.id) return;
-    try {
-      const w = await mobileWalletService.getOrCreateWallet(session.user.id);
-      setWallet(w);
-    } catch {
-      setWallet(null);
+    if (wdk.state?.status === 'READY') {
+      await wdk.balance.refetch?.();
     }
   };
 
-  useEffect(() => {
-    if (session?.user?.id) loadWallet();
-    else setWallet(null);
-  }, [session?.user?.id]);
-
   const handleSignOut = async () => {
+    try { await wdk.walletManager.lock(); } catch { /* Signing remains unavailable until next unlock. */ }
     const result = await mobileAuthService.signOut();
     setSession(null);
-    setWallet(null);
+    setWalletSetupRequired(false);
+    setWalletSetupError('');
     setIsLocked(false);
     setCurrentTab('wallet');
     if (result?.warning) {
@@ -163,7 +224,7 @@ export default function App() {
   };
 
   const confirmSignOut = () => Alert.alert(
-    'Sign out of AssetBridge?',
+    'Sign out of InterLink?',
     'You can sign back in at any time.',
     [
       { text: 'Stay signed in', style: 'cancel' },
@@ -176,8 +237,12 @@ export default function App() {
       <SafeAreaView style={styles.safeArea}>
         <StatusBar barStyle="dark-content" backgroundColor="#F1F4F8" />
         <View style={styles.loadingScreen}>
-          <View style={styles.logoBadge}><Ionicons name="infinite" size={24} color="#00E676" /></View>
-          <Text style={styles.loadingBrand}>AssetBridge</Text>
+          <Image
+            source={require('./assets/interlink-logo.png')}
+            style={styles.logoImageLarge}
+            resizeMode="contain"
+          />
+          <Text style={styles.loadingBrand}>InterLink</Text>
           <Text style={styles.loadingCopy}>Getting your account ready…</Text>
         </View>
       </SafeAreaView>
@@ -188,7 +253,34 @@ export default function App() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <StatusBar barStyle="light-content" backgroundColor="#0A0F1C" />
-        <AuthFlowScreen onAuthenticated={(nextSession) => setSession(nextSession)} />
+        <AuthFlowScreen onAuthenticated={(nextSession, meta) => { setIsNewAccount(Boolean(meta?.isNewAccount)); setWalletSetupRequired(false); setWalletSetupError(''); setSession(nextSession); }} />
+      </SafeAreaView>
+    );
+  }
+
+  if (walletSetupRequired && wdk.state?.status !== 'READY') {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="light-content" backgroundColor="#0A0F1C" />
+        <WalletSetupScreen
+          walletId={walletId}
+          walletManager={wdk.walletManager}
+          isNewAccount={isNewAccount}
+          onComplete={() => { setWalletSetupRequired(false); setWalletSetupError(''); setIsNewAccount(false); walletInitRef.current = walletId; }}
+        />
+        {walletSetupError ? <Text style={{ color: '#FCA5A5', padding: 12 }}>{walletSetupError}</Text> : null}
+      </SafeAreaView>
+    );
+  }
+
+  if (!walletReady) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="dark-content" backgroundColor="#F1F4F8" />
+        <View style={styles.loadingScreen}>
+          <ActivityIndicator size="large" color="#00B87A" />
+          <Text style={styles.loadingCopy}>Unlocking this device’s wallet…</Text>
+        </View>
       </SafeAreaView>
     );
   }
@@ -207,10 +299,12 @@ export default function App() {
       {/* --- MINIMALIST TOP NAV --- */}
       <View style={styles.topNav}>
         <View style={styles.brandGroup}>
-          <View style={styles.logoBadge}>
-            <Ionicons name="infinite" size={22} color="#FFFFFF" />
-          </View>
-          <Text style={styles.brandTitle}>AssetBridge</Text>
+          <Image
+            source={require('./assets/interlink-logo.png')}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
+          <Text style={styles.brandTitle}>InterLink</Text>
         </View>
 
         <TouchableOpacity style={styles.profileChip} activeOpacity={0.7} onPress={confirmSignOut} accessibilityLabel="Sign out">
@@ -234,20 +328,20 @@ export default function App() {
           <HomeScreen 
             wallet={wallet}
             currentUser={session?.user}
-            onRefresh={async () => { setRefreshing(true); await loadWallet(); setRefreshing(false); }}
+            onRefresh={loadWallet}
+            onFeeQuote={async (recipientAddress, amountBaseUnits) => {
+              const q = await quoteUsdtTransfer(wdk.account, recipientAddress, amountBaseUnits);
+              const feeWei = BigInt(q.fee || 0);
+              return { ...q, feeEth: (Number(feeWei) / 1e18).toFixed(6), feeUsdt: 'testnet value unavailable' };
+            }}
             onTransfer={async (transfer) => {
-              const result = await mobileWalletService.transfer(transfer);
-              setWallet(result.senderWallet || await mobileWalletService.getOrCreateWallet(wallet?.userId));
-              return result;
+              if (!wdk.account || !wallet) throw new Error('Unlock or restore your local WDK wallet first. No funds were moved.');
+              const resolvedRecipient = transfer.recipientAddressOrUsername;
+              if (!isSafePersonalEvmAddress(resolvedRecipient)) throw new Error('Enter a supported Ethereum Sepolia wallet address. Username resolution is not yet connected. No funds were moved.');
+              const amountBaseUnits = parseUsdtToBaseUnits(String(transfer.amountUsdt));
+              return submitOrCheckUsdtTransfer(wdk.account, { requestId: transfer.requestId || createPaymentRequestId(), recipient: resolvedRecipient, amountBaseUnits, approvedFeeWei: transfer.approvedFeeWei });
             }}
-            onFaucet={async () => {
-              try {
-                await mobileWalletService.claimFaucet(wallet?.userId);
-                await loadWallet();
-              } catch (error) {
-                Alert.alert('Test funds unavailable', error.message || 'No funds were added.');
-              }
-            }}
+            onFaucet={async () => Alert.alert('Sepolia test funds', 'Request Sepolia ETH from a trusted Sepolia faucet and Sepolia test USDT from the configured test-token source. This app does not mint or add funds.')}
             onNavigate={handleNavigate} 
           />
         )}
@@ -303,20 +397,17 @@ const styles = StyleSheet.create({
   brandGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
-  logoBadge: {
+  logoImage: {
     width: 38,
     height: 38,
-    borderRadius: 12,
-    backgroundColor: '#0A0F1C',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#0A0F1C',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
+    backgroundColor: 'transparent',
+  },
+  logoImageLarge: {
+    width: 48,
+    height: 48,
+    backgroundColor: 'transparent',
   },
   brandTitle: {
     fontSize: 22,

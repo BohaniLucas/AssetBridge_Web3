@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -47,10 +48,12 @@ const INTRO = [
 function Brand({ light = false }) {
   return (
     <View style={styles.brandRow}>
-      <View style={styles.logo}>
-        <Ionicons name="infinite" size={21} color={GREEN} />
-      </View>
-      <Text style={[styles.brandName, light && styles.brandNameLight]}>AssetBridge</Text>
+      <Image
+        source={require('../../assets/interlink-logo.png')}
+        style={styles.logo}
+        resizeMode="contain"
+      />
+      <Text style={[styles.brandName, light && styles.brandNameLight]}>InterLink</Text>
     </View>
   );
 }
@@ -119,7 +122,7 @@ export default function AuthFlowScreen({ onAuthenticated }) {
     setBusy(true);
     try {
       const session = await mobileAuthService.signIn(email, password);
-      onAuthenticated(session);
+      onAuthenticated(session, { isNewAccount: false });
     } catch (err) {
       setError(err.message || 'We could not sign you in. Check your details and try again.');
     } finally {
@@ -142,7 +145,7 @@ export default function AuthFlowScreen({ onAuthenticated }) {
         setConfirmPassword('');
         setScreen('login');
       } else {
-        onAuthenticated(result);
+        onAuthenticated(result, { isNewAccount: true });
       }
     } catch (err) {
       setError(err.message || 'We could not create your account. Please try again.');
@@ -177,7 +180,11 @@ export default function AuthFlowScreen({ onAuthenticated }) {
               <View style={styles.heroCardBack} />
               <View style={styles.heroCard}>
                 <View style={styles.heroCardHeader}>
-                  <View style={styles.heroMiniLogo}><Ionicons name="infinite" size={15} color={INK} /></View>
+                  <Image
+                    source={require('../../assets/interlink-logo.png')}
+                    style={styles.heroMiniLogo}
+                    resizeMode="contain"
+                  />
                   <Text style={styles.heroCardCaption}>YOUR MONEY, CONNECTED</Text>
                   <Ionicons name="ellipsis-horizontal" size={18} color="#94A3B8" />
                 </View>
@@ -269,7 +276,7 @@ export default function AuthFlowScreen({ onAuthenticated }) {
               <View style={styles.formIcon}><Ionicons name={screen === 'login' ? 'hand-right-outline' : 'sparkles-outline'} size={24} color="#059669" /></View>
               <Text style={styles.formEyebrow}>{screen === 'login' ? 'WELCOME BACK' : 'YOUR JOURNEY STARTS HERE'}</Text>
               <Text style={styles.formTitle}>{screen === 'login' ? 'Good to see you.' : 'Create your account.'}</Text>
-              <Text style={styles.formSubtitle}>{screen === 'login' ? 'Sign in to continue to AssetBridge.' : 'A few details to get your account ready.'}</Text>
+              <Text style={styles.formSubtitle}>{screen === 'login' ? 'Sign in to continue to InterLink.' : 'A few details to get your account ready.'}</Text>
             </View>
 
             {screen === 'signup' ? (
@@ -325,7 +332,7 @@ export default function AuthFlowScreen({ onAuthenticated }) {
             ) : null}
 
             <View style={styles.switchAuthRow}>
-              <Text style={styles.switchAuthText}>{screen === 'login' ? 'New to AssetBridge?' : 'Already have an account?'}</Text>
+              <Text style={styles.switchAuthText}>{screen === 'login' ? 'New to InterLink?' : 'Already have an account?'}</Text>
               <TouchableOpacity onPress={() => go(screen === 'login' ? 'signup' : 'login')}>
                 <Text style={styles.switchAuthLink}>{screen === 'login' ? ' Create account' : ' Log in'}</Text>
               </TouchableOpacity>
@@ -343,7 +350,7 @@ const styles = StyleSheet.create({
   welcomeScreen: { flex: 1, minHeight: 760, backgroundColor: INK, paddingHorizontal: 25, paddingTop: 22, paddingBottom: 28, justifyContent: 'space-between', overflow: 'hidden' },
   welcomeTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  logo: { width: 35, height: 35, borderRadius: 12, backgroundColor: '#172236', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#26354B' },
+  logo: { width: 35, height: 35, backgroundColor: 'transparent' },
   brandName: { color: INK, fontSize: 19, fontWeight: '900', letterSpacing: -0.55 },
   brandNameLight: { color: '#F8FAFC' },
   previewPill: { flexDirection: 'row', gap: 7, alignItems: 'center', backgroundColor: '#172236', paddingHorizontal: 11, paddingVertical: 7, borderRadius: 30, borderWidth: 1, borderColor: '#26354B' },
@@ -355,7 +362,7 @@ const styles = StyleSheet.create({
   heroCardBack: { width: '82%', height: 150, borderRadius: 22, backgroundColor: '#203149', transform: [{ rotate: '-8deg' }], position: 'absolute', top: 52, opacity: 0.72 },
   heroCard: { width: '88%', height: 172, borderRadius: 22, padding: 17, backgroundColor: '#FFFFFF', transform: [{ rotate: '3deg' }], shadowColor: '#000', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.24, shadowRadius: 20, elevation: 12 },
   heroCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  heroMiniLogo: { width: 26, height: 26, borderRadius: 9, backgroundColor: GREEN, alignItems: 'center', justifyContent: 'center' },
+  heroMiniLogo: { width: 26, height: 26, backgroundColor: 'transparent' },
   heroCardCaption: { flex: 1, color: '#64748B', fontSize: 8, letterSpacing: 0.8, fontWeight: '900' },
   heroCardLabel: { color: INK, fontSize: 13, fontWeight: '900', letterSpacing: 0.2, marginTop: 21 },
   heroLine: { height: 1, backgroundColor: '#E2E8F0', marginTop: 15 },

@@ -1,35 +1,70 @@
 {
   "expo": {
-    "name": "AssetBridgeMobile",
-    "slug": "AssetBridgeMobile",
+    "name": "InterLink",
+    "slug": "InterLink",
     "version": "1.0.0",
     "orientation": "portrait",
     "plugins": [
       [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 29
+          }
+        }
+      ],
+      [
         "expo-camera",
         {
-          "cameraPermission": "Allow AssetBridgeMobile to use your camera to scan QR codes.",
+          "cameraPermission": "Allow InterLink to use your camera to scan QR codes.",
           "recordAudioAndroid": false,
           "barcodeScannerEnabled": true
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-status-bar",
+      "expo-font",
+      [
+        "react-native-nfc-manager",
+        {
+          "nfcPermission": "Allow InterLink to read nearby NFC payment request tags."
+        }
+      ]
     ],
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
+      "bundleIdentifier": "com.assetbridge.interlink",
       "supportsTablet": true
     },
     "android": {
+      "package": "com.assetbridge.interlink",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.NFC",
+        "android.permission.CAMERA",
+        "android.permission.NFC"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "a7e1bb7b-4ee0-4de0-a906-a2ed1bba3b4e"
+      }
+    },
+    "owner": "bohanilucas",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/a7e1bb7b-4ee0-4de0-a906-a2ed1bba3b4e"
     }
   }
 }

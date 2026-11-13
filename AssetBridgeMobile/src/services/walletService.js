@@ -111,6 +111,14 @@ export function buildReceiveQrPayload(wallet, currentUserId, optionalAmountUsdt 
   return `${baseUri}?${params.join('&')}`;
 }
 
+function safeDecodeURIComponent(value) {
+  try {
+    return decodeURIComponent(String(value).replace(/\+/g, '%20'));
+  } catch {
+    throw new Error('Malformed URL encoding in QR code payload.');
+  }
+}
+
 function parseQueryString(queryStr) {
   const out = {};
   if (!queryStr) return out;
@@ -118,28 +126,61 @@ function parseQueryString(queryStr) {
     if (!part) continue;
     const idx = part.indexOf('=');
     if (idx === -1) {
-      out[decodeURIComponent(part)] = '';
+      out[safeDecodeURIComponent(part).trim()] = '';
     } else {
-      const k = decodeURIComponent(part.slice(0, idx)).trim();
-      const v = decodeURIComponent(part.slice(idx + 1)).trim();
+      const k = safeDecodeURIComponent(part.slice(0, idx)).trim();
+      const v = safeDecodeURIComponent(part.slice(idx + 1)).trim();
       out[k] = v;
     }
   }
   return out;
 }
 
+const SUPPORTED_QR_BARCODE_TYPES = new Set([
+  'qr',
+  'org.iso.qrcode',
+  '256',
+  'qr_code',
+  'com.google.zxing.client.android.qr_code',
+]);
+
 /**
  * Strictly parses and validates scanned QR codes for Ethereum Sepolia USDT transfers.
+ * Accepts either a raw string or an expo-camera BarcodeScanningResult object ({ type, data, raw }).
+ *
  * Supported formats:
  * 1. EIP-681 ERC-20 transfer: ethereum:0x7169...@11155111/transfer?address=0xRecipient&uint256=50000000
  * 2. EIP-681 address URI:     ethereum:0xRecipient@11155111?amount=50&token=USDT
  * 3. AssetBridge JSON / URI:  assetbridge://pay?address=0xRecipient&chainId=11155111&token=USDT&amount=50&expiresAt=...
  * 4. Plain Ethereum address:  0xRecipient (40 hex chars)
  *
- * Rejects malformed QRs, unsupported networks/chain IDs, unsupported tokens/contracts,
- * expired requests, and the Sepolia USDT token contract address itself.
+ * Rejects non-QR barcode types, malformed QRs, unsupported networks/chain IDs,
+ * unsupported tokens/contracts, expired requests, and the Sepolia USDT token contract address itself.
  */
-export function parseAndValidateUsdtQr(rawPayload) {
+export function parseAndValidateUsdtQr(scanInput) {
+  if (!scanInput) {
+    return { valid: false, error: 'Scanned QR code is empty or unreadable.' };
+  }
+
+  let rawPayload = scanInput;
+  if (typeof scanInput === 'object') {
+    if (scanInput.type != null && String(scanInput.type).trim() !== '') {
+      const normalizedType = String(scanInput.type).trim().toLowerCase();
+      if (!SUPPORTED_QR_BARCODE_TYPES.has(normalizedType)) {
+        return {
+          valid: false,
+          error: `Unsupported barcode type "${scanInput.type}". Only QR codes are supported.`,
+        };
+      }
+    }
+    rawPayload =
+      typeof scanInput.data === 'string' && scanInput.data.trim() !== ''
+        ? scanInput.data
+        : typeof scanInput.raw === 'string'
+        ? scanInput.raw
+        : '';
+  }
+
   if (!rawPayload || typeof rawPayload !== 'string') {
     return { valid: false, error: 'Scanned QR code is empty or unreadable.' };
   }
@@ -161,12 +202,15 @@ export function parseAndValidateUsdtQr(rawPayload) {
   if (HEX_ADDRESS_REGEX.test(trimmed)) {
     recipientAddress = trimmed;
   }
-  // Case 2: JSON payload
-  else if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+  // Case 2: JSON payload (including malformed JSON starting with '{')
+  else if (trimmed.startsWith('{')) {
     let parsedJson;
     try {
       parsedJson = JSON.parse(trimmed);
     } catch {
+      return { valid: false, error: 'Malformed JSON QR code.' };
+    }
+    if (!parsedJson || typeof parsedJson !== 'object' || Array.isArray(parsedJson)) {
       return { valid: false, error: 'Malformed JSON QR code.' };
     }
     recipientAddress = parsedJson.address || parsedJson.recipient || parsedJson.to || null;
@@ -174,8 +218,10 @@ export function parseAndValidateUsdtQr(rawPayload) {
     if (parsedJson.token || parsedJson.symbol) {
       tokenSymbol = String(parsedJson.token || parsedJson.symbol).toUpperCase();
     }
-    if (parsedJson.contractAddress || parsedJson.tokenContract) {
-      contractAddress = String(parsedJson.contractAddress || parsedJson.tokenContract);
+    if (parsedJson.contractAddress || parsedJson.tokenContract || parsedJson.contract) {
+      contractAddress = String(
+        parsedJson.contractAddress || parsedJson.tokenContract || parsedJson.contract
+      );
     }
     if (parsedJson.amount != null && String(parsedJson.amount).trim() !== '') {
       amountUsdt = String(parsedJson.amount).trim();
@@ -190,8 +236,15 @@ export function parseAndValidateUsdtQr(rawPayload) {
   // Case 3: EIP-681 `ethereum:` URI
   else if (trimmed.toLowerCase().startsWith('ethereum:')) {
     const withoutScheme = trimmed.slice('ethereum:'.length).replace(/^pay-/i, '');
-    const [pathPart, queryPart = ''] = withoutScheme.split('?');
-    const query = parseQueryString(queryPart);
+    const qIdx = withoutScheme.indexOf('?');
+    const pathPart = qIdx !== -1 ? withoutScheme.slice(0, qIdx) : withoutScheme;
+    const queryPart = qIdx !== -1 ? withoutScheme.slice(qIdx + 1) : '';
+    let query;
+    try {
+      query = parseQueryString(queryPart);
+    } catch (err) {
+      return { valid: false, error: err.message || 'Malformed URL encoding in QR code payload.' };
+    }
 
     const isTransferCall = /\/transfer$/i.test(pathPart);
     const targetPart = pathPart.replace(/\/transfer$/i, '');
@@ -205,6 +258,9 @@ export function parseAndValidateUsdtQr(rawPayload) {
 
     if (isTransferCall) {
       contractAddress = targetAddressRaw;
+      if (query.token || query.symbol) {
+        tokenSymbol = String(query.token || query.symbol).toUpperCase();
+      }
       recipientAddress = query.address || query.to || null;
       if (query.uint256) {
         try {
@@ -220,8 +276,8 @@ export function parseAndValidateUsdtQr(rawPayload) {
       if (query.token || query.symbol) {
         tokenSymbol = String(query.token || query.symbol).toUpperCase();
       }
-      if (query.contract || query.tokenAddress) {
-        contractAddress = query.contract || query.tokenAddress;
+      if (query.contract || query.tokenAddress || query.contractAddress) {
+        contractAddress = query.contract || query.tokenAddress || query.contractAddress;
       }
       if (query.amount || query.value) {
         amountUsdt = query.amount || query.value;
@@ -239,12 +295,17 @@ export function parseAndValidateUsdtQr(rawPayload) {
   else if (trimmed.toLowerCase().startsWith('assetbridge://')) {
     const qIdx = trimmed.indexOf('?');
     const queryPart = qIdx !== -1 ? trimmed.slice(qIdx + 1) : '';
-    const query = parseQueryString(queryPart);
+    let query;
+    try {
+      query = parseQueryString(queryPart);
+    } catch (err) {
+      return { valid: false, error: err.message || 'Malformed URL encoding in QR code payload.' };
+    }
     recipientAddress = query.address || query.recipient || query.to || null;
     if (query.chainId) chainId = Number(query.chainId);
     if (query.token || query.symbol) tokenSymbol = String(query.token || query.symbol).toUpperCase();
-    if (query.contract || query.contractAddress) {
-      contractAddress = query.contract || query.contractAddress;
+    if (query.contract || query.contractAddress || query.tokenContract) {
+      contractAddress = query.contract || query.contractAddress || query.tokenContract;
     }
     if (query.amount) amountUsdt = query.amount;
     if (query.expiresAt || query.exp) expiresAt = query.expiresAt || query.exp;

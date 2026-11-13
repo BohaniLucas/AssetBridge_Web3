@@ -17,7 +17,7 @@ import {
 } from '../services/remittanceService';
 
 const FLOW_TABS = [
-  { id: 'app_to_app', label: 'AssetBridge User', sub: 'By @username' },
+  { id: 'app_to_app', label: 'InterLink User', sub: 'By @username' },
   { id: 'gogo_claim', label: 'Gogo Claim Link', sub: 'No app needed' },
   { id: 'phone_payout', label: 'Bank / PayShap', sub: 'ShapID Proxy' },
 ];
@@ -120,7 +120,7 @@ export default function RemittanceScreen() {
     setFormError('');
     setVerifiedRecipient(null);
     if (!recipientUsername.trim()) {
-      setFormError('Enter an AssetBridge @username to verify.');
+      setFormError('Enter an InterLink @username to verify.');
       return;
     }
     setIsResolvingUser(true);
@@ -288,7 +288,7 @@ export default function RemittanceScreen() {
   const handleShareClaimDetails = async (claimObj) => {
     try {
       await Share.share({
-        message: `AssetBridge Gogo Claim Reference: ${claimObj.id}\nLink (No secret in URL): ${claimObj.safeClaimUrl}\nShare the separate one-time claim code only with ${claimObj.recipientName}.`,
+        message: `InterLink Gogo Claim Reference: ${claimObj.id}\nLink (No secret in URL): ${claimObj.safeClaimUrl}\nShare the separate one-time claim code only with ${claimObj.recipientName}.`,
       });
     } catch {
       // Share dismissed
@@ -370,7 +370,7 @@ export default function RemittanceScreen() {
         </View>
         <Text style={styles.heroTitle}>Remittance & Gogo Claims</Text>
         <Text style={styles.heroSub}>
-          Send to a verified AssetBridge @username, create a one-time OTP-protected Gogo claim link, or check regulated local payout availability.
+          Send to a verified InterLink @username, create a one-time OTP-protected Gogo claim link, or check regulated local payout availability.
         </Text>
       </View>
 

@@ -4,25 +4,39 @@
   "main": "index.js",
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
-    "expo": "~58.0.24",
-    "expo-camera": "~58.0.14",
-    "expo-secure-store": "~58.0.3",
-    "expo-status-bar": "~58.0.5",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
-    "react-native": "0.88.1",
-    "react-native-web": "^0.21.4"
+    "@tetherto/wdk": "^1.0.0-beta.5",
+    "@tetherto/wdk-react-native-core": "^1.0.0-beta.22",
+    "@tetherto/wdk-wallet-evm-erc-4337": "^1.0.0-beta.25",
+    "bufferutil": "^4.2.0",
+    "expo": "~56.0.24",
+    "expo-build-properties": "~56.0.27",
+    "expo-camera": "~56.0.8",
+    "expo-crypto": "~56.0.5",
+    "expo-dev-client": "~56.0.28",
+    "expo-font": "~56.0.7",
+    "expo-secure-store": "~56.0.4",
+    "expo-status-bar": "~56.0.4",
+    "expo-updates": "~56.0.28",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.85.3",
+    "react-native-bare-kit": "^0.14.5",
+    "react-native-nfc-manager": "4.2.0",
+    "react-native-web": "^0.21.4",
+    "utf-8-validate": "^5.0.10"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "postinstall": "node scripts/generate-wdk-bundle.cjs"
   },
   "private": true,
   "devDependencies": {
+    "@tetherto/wdk-worklet-bundler": "^1.0.0-beta.15",
     "eslint": "^9.0.0",
-    "eslint-config-expo": "~58.0.4"
+    "eslint-config-expo": "~56.0.0"
   }
 }

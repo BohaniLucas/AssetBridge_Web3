@@ -292,7 +292,7 @@ export default function CreatePotScreen({ onBack, onSave }) {
             </View>
             <ScrollView style={{ maxHeight: 420 }}>
               <Text style={styles.termsBody}>
-                {`# AssetBridge Rotating Stokvel Constitution\n\n` +
+                {`# InterLink Rotating Stokvel Constitution\n\n` +
                   `1. Group: ${potName.trim() || 'Untitled Stokvel'}\n` +
                   `2. Operating Type: Rotating Payout Stokvel (ROSCA)\n` +
                   `3. Agreed Contribution: $${parsedAmount.toFixed(2)} USDT per cycle\n` +

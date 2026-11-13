@@ -11,6 +11,7 @@ import {
   Alert,
   Share,
   Platform,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -19,18 +20,21 @@ import {
   SUPPORTED_WALLET_CONFIG,
   isVerifiedUserWallet,
   isSafePersonalEvmAddress,
+  parseUsdtToBaseUnits,
   buildReceiveQrPayload,
   parseAndValidateUsdtQr,
 } from '../services/walletService';
 import { remittanceService } from '../services/remittanceService';
 import { mobileAuthService } from '../services/authService';
 import { sessionLockService } from '../services/sessionLockService';
+import { createPaymentRequestId } from '../services/wdkPaymentService';
 
 export default function HomeScreen({
   wallet,
   currentUser,
   onRefresh,
   onTransfer,
+  onFeeQuote,
   onFaucet,
   onNavigate,
 }) {
@@ -38,6 +42,11 @@ export default function HomeScreen({
   const [showSendModal, setShowSendModal] = useState(false);
   const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [showQrChoiceModal, setShowQrChoiceModal] = useState(false);
+  const [showPayMethodsModal, setShowPayMethodsModal] = useState(false);
+  const [showNfcScanner, setShowNfcScanner] = useState(false);
+  const [isNfcScanning, setIsNfcScanning] = useState(false);
+  const [nfcStatus, setNfcStatus] = useState('');
+  const [torchEnabled, setTorchEnabled] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -48,6 +57,11 @@ export default function HomeScreen({
 
   // Synchronous lock to prevent repeated camera callbacks from opening duplicate payment requests
   const scanLockRef = useRef(false);
+  const nfcScanLockRef = useRef(false);
+  const nfcCancelRef = useRef(false);
+  const nfcRequestAttemptedRef = useRef(false);
+  const nfcManagerRef = useRef(null);
+  const [isScanLocked, setIsScanLocked] = useState(false);
   const [scannerError, setScannerError] = useState('');
 
   // Send USDT flow
@@ -59,6 +73,8 @@ export default function HomeScreen({
   const [feeQuote, setFeeQuote] = useState(null);
   const [feeQuoteError, setFeeQuoteError] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [paymentRequestId, setPaymentRequestId] = useState('');
+  const [paymentResult, setPaymentResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
 
   // Withdraw to local currency flow
@@ -90,14 +106,13 @@ export default function HomeScreen({
       ? Number(wallet.balanceUsdt)
       : null;
 
+  const visibleTransactions = hasVerifiedUserWallet && effectiveUserId ? transactions : [];
+
   useEffect(() => {
-    let active = true;
     if (!hasVerifiedUserWallet || !effectiveUserId) {
-      setTransactions([]);
-      return () => {
-        active = false;
-      };
+      return undefined;
     }
+    let active = true;
     mobileWalletService
       .getTransactions(effectiveUserId)
       .then((items) => {
@@ -162,52 +177,101 @@ export default function HomeScreen({
     setShowReceiveModal(true);
   };
 
+  const openPayMethods = () => {
+    sessionLockService.recordActivity();
+    setShowPayMethodsModal(true);
+  };
+
+  // Watchdog timer so the scanner never remains stuck on an endless "Starting camera…" or silent black preview
+  useEffect(() => {
+    if (!showScanner || !cameraPermission?.granted || cameraReady || cameraMountError) {
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      setCameraMountError(
+        'Camera preview timed out while starting. Ensure no other app is using the camera, then tap "Remount Camera".'
+      );
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [showScanner, cameraPermission?.granted, cameraReady, cameraMountError, cameraMountAttempt]);
+
+  const handleCloseScanner = () => {
+    setShowScanner(false);
+    setCameraReady(false);
+    setTorchEnabled(false);
+    setCameraMountError('');
+    setScannerError('');
+    scanLockRef.current = false;
+    setIsScanLocked(false);
+  };
+
   const handleSelectQrSend = async () => {
+    setShowPayMethodsModal(false);
     setShowQrChoiceModal(false);
     setScannerError('');
     setCameraMountError('');
     setCameraReady(false);
     scanLockRef.current = false;
+    setIsScanLocked(false);
+    setShowScanner(true);
 
-    if (!cameraPermission?.granted) {
-      const result = await requestCameraPermission();
-      if (!result.granted) {
-        Alert.alert(
-          'Camera access needed',
-          'Allow camera access in your device settings to scan payment QR codes.'
+    if (!cameraPermission?.granted && cameraPermission?.canAskAgain !== false) {
+      try {
+        await requestCameraPermission();
+      } catch (err) {
+        setCameraMountError(
+          err?.message || 'Unable to request camera permission from the operating system.'
         );
-        return;
       }
     }
-    setShowScanner(true);
+  };
+
+  const handleRequestPermissionAgain = async () => {
+    setCameraMountError('');
+    setCameraReady(false);
+    try {
+      await requestCameraPermission();
+    } catch (err) {
+      setCameraMountError(
+        err?.message || 'Unable to request camera permission from the operating system.'
+      );
+    }
+  };
+
+  const handleOpenDeviceSettings = async () => {
+    try {
+      await Linking.openSettings();
+    } catch {
+      Alert.alert(
+        'Open Device Settings',
+        'Open your device Settings > Apps > Expo Go (or InterLink) > Permissions > Camera and select Allow.'
+      );
+    }
   };
 
   const handleRetryCamera = () => {
+    setScannerError('');
     setCameraMountError('');
     setCameraReady(false);
+    scanLockRef.current = false;
+    setIsScanLocked(false);
     setCameraMountAttempt((attempt) => attempt + 1);
   };
 
-  // --- QR FLOW: 2. Strict Barcode Scanner Callback with Duplicate-Scan Lock ---
-  const handleBarcodeScanned = ({ data }) => {
-    if (scanLockRef.current) {
-      return;
-    }
-    scanLockRef.current = true;
-    sessionLockService.recordActivity();
-
-    const validation = parseAndValidateUsdtQr(data);
+  const openValidatedPaymentRequest = (validation, sourceLabel) => {
     if (!validation.valid) {
       setScannerError(validation.error || 'Invalid or unsupported QR code.');
-      return;
+      return false;
     }
 
-    // Validated Ethereum Sepolia USDT QR code -> close scanner & open Review screen
-    // Never send immediately after scanning!
     setShowScanner(false);
+    setCameraReady(false);
+    setCameraMountError('');
     setScannerError('');
     setRecipient(validation.recipientAddress);
-    setQrScanMeta(validation);
+    setQrScanMeta({ ...validation, sourceLabel });
+    setPaymentRequestId(validation.amountUsdt ? createPaymentRequestId() : '');
+    setPaymentResult(null);
     if (validation.note) {
       setNote(validation.note);
     }
@@ -216,30 +280,126 @@ export default function HomeScreen({
       setAmount(validation.amountUsdt);
       setErrorMsg('');
       setSendStep(2);
-      fetchLiveFeeForReview();
+      fetchLiveFeeForReview(validation.recipientAddress, validation.amountUsdt);
     } else {
-      // Amount was not encoded in QR: prefill recipient on Step 1 so user enters amount before Step 2 Review
       setErrorMsg('');
       setSendStep(1);
     }
     setShowSendModal(true);
+    return true;
+  };
+
+  // --- QR FLOW: 2. Strict Barcode Scanner Callback with Duplicate-Scan Lock ---
+  const handleBarcodeScanned = (scanningResult) => {
+    if (scanLockRef.current) return;
+    scanLockRef.current = true;
+    setIsScanLocked(true);
+    sessionLockService.recordActivity();
+    const validation = parseAndValidateUsdtQr(scanningResult);
+    openValidatedPaymentRequest(validation, 'QR');
   };
 
   const handleResetScannerLock = () => {
     setScannerError('');
     scanLockRef.current = false;
+    setIsScanLocked(false);
   };
 
-  const fetchLiveFeeForReview = async () => {
+  const fetchLiveFeeForReview = async (recipientAddress = recipient, amountText = amount) => {
     setFeeQuote(null);
     setFeeQuoteError('');
     try {
-      const q = await mobileWalletService.getFeeQuote();
+      const baseUnits = parseUsdtToBaseUnits(String(amountText));
+      const q = await onFeeQuote?.(String(recipientAddress).trim(), baseUnits);
+      if (!q) throw new Error('WDK fee quote is unavailable.');
       setFeeQuote(q);
-    } catch {
+    } catch (error) {
       setFeeQuoteError(
-        'Live network fee quote unavailable until on-device WDK signing is active.'
+        error?.message || 'Could not get a live Sepolia fee quote. No funds were moved.'
       );
+    }
+  };
+
+  const cancelNfcScan = async () => {
+    nfcCancelRef.current = true;
+    const nfcManager = nfcManagerRef.current;
+    if (nfcRequestAttemptedRef.current && nfcManager) {
+      try { await nfcManager.cancelTechnologyRequest(); } catch { /* Scanner may already have closed. */ }
+      nfcRequestAttemptedRef.current = false;
+    }
+    setShowNfcScanner(false);
+    setIsNfcScanning(false);
+  };
+
+  const startNfcPaymentScan = async () => {
+    setShowPayMethodsModal(false);
+    if (nfcScanLockRef.current) return;
+    nfcScanLockRef.current = true;
+    nfcCancelRef.current = false;
+    nfcRequestAttemptedRef.current = false;
+    setNfcStatus('Checking NFC support…');
+    setShowNfcScanner(true);
+    setIsNfcScanning(true);
+    let nfcManager;
+    try {
+      // Load lazily so Expo Go can still run the rest of the app. This module
+      // intentionally throws at import time when its native bridge is absent.
+      const nfcModule = await import('react-native-nfc-manager');
+      nfcManager = nfcModule.default;
+      const { Ndef, NfcTech } = nfcModule;
+      nfcManagerRef.current = nfcManager;
+      const supported = await nfcManager.isSupported(NfcTech.Ndef);
+      if (!supported) throw new Error('This device does not support NFC NDEF tag reading. Use QR scan or enter the address.');
+      if (Platform.OS === 'android' && !(await nfcManager.isEnabled())) {
+        throw new Error('Turn on NFC in Android Settings, then try again. No payment was made.');
+      }
+      await nfcManager.start();
+      if (nfcCancelRef.current) return;
+      setNfcStatus('Hold the back of your phone near the merchant’s NFC payment tag.');
+      nfcRequestAttemptedRef.current = true;
+      await nfcManager.requestTechnology(NfcTech.Ndef);
+      if (nfcCancelRef.current) return;
+      const tag = await nfcManager.getTag();
+      const records = tag?.ndefMessage || [];
+      let paymentPayload = '';
+      for (const record of records) {
+        if (Ndef.isType(record, Ndef.TNF_WELL_KNOWN, Ndef.RTD_URI)) {
+          paymentPayload = Ndef.uri.decodePayload(Uint8Array.from(record.payload || []));
+          break;
+        }
+        if (Ndef.isType(record, Ndef.TNF_WELL_KNOWN, Ndef.RTD_TEXT)) {
+          const textPayload = Ndef.text.decodePayload(Uint8Array.from(record.payload || [])).trim();
+          if (/^(ethereum:|assetbridge:\/\/|0x)/i.test(textPayload)) {
+            paymentPayload = textPayload;
+            break;
+          }
+        }
+      }
+      if (!paymentPayload) throw new Error('This NFC tag does not contain a supported AssetBridge or Sepolia USDT payment request.');
+      const validation = parseAndValidateUsdtQr(paymentPayload);
+      if (!validation.valid) throw new Error(validation.error || 'NFC payment request was rejected.');
+      setShowNfcScanner(false);
+      setIsNfcScanning(false);
+      openValidatedPaymentRequest(validation, 'NFC');
+    } catch (error) {
+      if (!nfcCancelRef.current) {
+        setShowNfcScanner(false);
+        const nativeBuildRequired = /native module is unavailable|Expo Go cannot load/i.test(error?.message || '');
+        const message = nativeBuildRequired
+          ? 'NFC needs the custom EAS development build. Expo Go does not include its native NFC module. Install the NFC-enabled development build, then scan again.'
+          : error?.message || 'NFC scan failed.';
+        Alert.alert('NFC payment request not accepted', `${message}\n\nNo payment was made. You can scan a QR code or enter the address.`);
+      }
+    } finally {
+      if (nfcRequestAttemptedRef.current) {
+        try { await nfcManager.cancelTechnologyRequest(); } catch { /* Session may already have ended. */ }
+      }
+      nfcRequestAttemptedRef.current = false;
+      nfcScanLockRef.current = false;
+      setIsNfcScanning(false);
+      setNfcStatus('');
+      setShowNfcScanner(false);
+      nfcManagerRef.current = null;
     }
   };
 
@@ -282,6 +442,8 @@ export default function HomeScreen({
     }
 
     setErrorMsg('');
+    setPaymentRequestId(createPaymentRequestId());
+    setPaymentResult(null);
     setSendStep(2);
     fetchLiveFeeForReview();
   };
@@ -298,23 +460,28 @@ export default function HomeScreen({
     setIsSending(true);
     setErrorMsg('');
     try {
-      await onTransfer({
+      const result = await onTransfer({
         senderUserId: effectiveUserId,
         recipientAddressOrUsername: recipient.trim(),
         amountUsdt: Number(amount),
         note,
+        requestId: paymentRequestId || createPaymentRequestId(),
+        approvedFeeWei: feeQuote?.fee,
       });
-      // Only reached if an official WDK integration + backend receipt verification succeeds
-      setShowSendModal(false);
-      setSendStep(1);
-      setRecipient('');
-      setNote('');
-      setQrScanMeta(null);
+      setPaymentResult(result);
+      if (result?.status === 'pending' || result?.status === 'outcome-unknown') {
+        setErrorMsg(result.statusMessage || 'Payment submitted. It is still pending; use Check status to reconcile this same request.');
+        return;
+      }
+      if (result?.status !== 'successful') {
+        throw new Error(result?.error || 'The network did not confirm this payment. Check status before creating another request.');
+      }
       await onRefresh?.();
+      return;
     } catch (error) {
       setErrorMsg(
         error.message ||
-          'Wallet signing is unavailable until an Expo SDK 58-compatible WDK release is integrated. No funds were moved.'
+          'Payment was not confirmed. Use Check status before attempting another payment.'
       );
     } finally {
       setIsSending(false);
@@ -352,11 +519,6 @@ export default function HomeScreen({
 
   const activeWithdrawCorridor =
     withdrawOptions?.corridors?.find((c) => c.corridorCode === selectedCorridorCode) ||
-    null;
-
-  const activeWithdrawMethod =
-    activeWithdrawCorridor?.payoutMethods?.find((m) => m.id === selectedPayoutMethod) ||
-    activeWithdrawCorridor?.payoutMethods?.[0] ||
     null;
 
   const handleRequestWithdrawQuote = async () => {
@@ -525,15 +687,10 @@ export default function HomeScreen({
         {[
           { label: 'Deposit', icon: 'add', color: '#3B82F6', action: onFaucet },
           {
-            label: 'Send',
-            icon: 'paper-plane',
+            label: 'Pay',
+            icon: 'card',
             color: '#10B981',
-            action: () => {
-              setQrScanMeta(null);
-              setErrorMsg('');
-              setSendStep(1);
-              setShowSendModal(true);
-            },
+            action: openPayMethods,
           },
           {
             label: 'Withdraw',
@@ -561,6 +718,44 @@ export default function HomeScreen({
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* ===================================================================== */}
+      {/* MODAL A: PAY METHODS (MANUAL, QR OR NFC REQUEST)                     */}
+      {/* ===================================================================== */}
+      <Modal
+        visible={showPayMethodsModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPayMethodsModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.sendSheet}>
+            <View style={styles.sendHeader}>
+              <Text style={styles.sendTitle}>Pay someone</Text>
+              <TouchableOpacity onPress={() => setShowPayMethodsModal(false)} accessibilityLabel="Close pay options">
+                <Ionicons name="close" size={23} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.reviewCopy}>Choose how to get the recipient’s Sepolia USDT payment details. You will review and approve the transfer before anything is sent.</Text>
+            <TouchableOpacity style={styles.qrChoiceCard} onPress={() => { setShowPayMethodsModal(false); setQrScanMeta(null); setErrorMsg(''); setSendStep(1); setShowSendModal(true); }}>
+              <View style={[styles.qrChoiceIcon, { backgroundColor: '#ECFDF5' }]}><Ionicons name="create-outline" size={24} color="#059669" /></View>
+              <View style={{ flex: 1 }}><Text style={styles.qrChoiceTitle}>Enter wallet details</Text><Text style={styles.qrChoiceSub}>Type a Sepolia wallet address and amount.</Text></View>
+              <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.qrChoiceCard} onPress={handleSelectQrSend}>
+              <View style={[styles.qrChoiceIcon, { backgroundColor: '#EEF2FF' }]}><Ionicons name="qr-code-outline" size={24} color="#6366F1" /></View>
+              <View style={{ flex: 1 }}><Text style={styles.qrChoiceTitle}>Scan QR code</Text><Text style={styles.qrChoiceSub}>Read a Sepolia USDT request with your camera.</Text></View>
+              <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.qrChoiceCard} onPress={startNfcPaymentScan}>
+              <View style={[styles.qrChoiceIcon, { backgroundColor: '#EFF6FF' }]}><Ionicons name="radio-outline" size={24} color="#2563EB" /></View>
+              <View style={{ flex: 1 }}><Text style={styles.qrChoiceTitle}>Tap an NFC payment tag</Text><Text style={styles.qrChoiceSub}>Read the merchant’s NFC request, then review the USDT transfer.</Text></View>
+              <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+            </TouchableOpacity>
+            <Text style={styles.reviewCopy}>NFC and QR only carry payment details. They do not move money or replace your approval.</Text>
+          </View>
+        </View>
+      </Modal>
 
       {/* ===================================================================== */}
       {/* MODAL A: QR SCAN STYLED CHOICE ("Send USDT" or "Receive USDT")        */}
@@ -605,18 +800,18 @@ export default function HomeScreen({
               onPress={handleSelectQrReceive}
               activeOpacity={0.8}
             >
-              <View style={[styles.qrChoiceIcon, { backgroundColor: '#EFF6FF' }]}>
-                <Ionicons name="qr-code-outline" size={24} color="#2563EB" />
+              <View style={[styles.qrChoiceIcon, { backgroundColor: '#FEF3C7' }]}>
+                <Ionicons name="lock-closed-outline" size={24} color="#D97706" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.qrChoiceTitle}>Receive USDT</Text>
+                <Text style={styles.qrChoiceTitle}>Receive USDT (Disabled)</Text>
                 <Text style={styles.qrChoiceSub}>
                   {hasVerifiedUserWallet
-                    ? 'Show your verified Ethereum Sepolia USDT address and payment request'
-                    : 'Wallet setup required — Personal wallet not yet linked'}
+                    ? 'QR rendering disabled — Awaiting package approval for local SVG QR renderer'
+                    : 'QR receiving disabled — Wallet setup required & local QR renderer pending approval'}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color="#64748B" />
+              <Ionicons name="information-circle-outline" size={20} color="#D97706" />
             </TouchableOpacity>
           </View>
         </View>
@@ -664,10 +859,15 @@ export default function HomeScreen({
               <View style={styles.setupRequiredBox}>
                 <View style={styles.setupRequiredHeader}>
                   <Ionicons name="warning" size={20} color="#B45309" />
-                  <Text style={styles.setupRequiredTitle}>Wallet setup required</Text>
+                  <Text style={styles.setupRequiredTitle}>
+                    QR Receiving Disabled — Wallet Setup Required
+                  </Text>
                 </View>
                 <Text style={styles.setupRequiredText}>
-                  No verified user-controlled wallet address is linked to your account yet. QR receiving is disabled until an official Expo SDK 58-compatible WDK wallet is created on your device.
+                  1. No verified user-controlled wallet address is linked to your account yet (requires an Expo SDK 58-compatible WDK release).
+                </Text>
+                <Text style={[styles.setupRequiredText, { marginTop: 6 }]}>
+                  2. Local on-device QR rendering also awaits approval to install react-native-svg@15.16.0 and react-native-qrcode-svg@6.3.21. Wallet addresses are never sent to external QR image services.
                 </Text>
                 <Text style={[styles.setupRequiredText, { marginTop: 8, fontWeight: '700' }]}>
                   Security Guard: The Sepolia USDT token contract ({SUPPORTED_WALLET_CONFIG.tokenContractAddress.slice(0, 10)}...{SUPPORTED_WALLET_CONFIG.tokenContractAddress.slice(-6)}) is never displayed or encoded as a personal receive address.
@@ -675,16 +875,18 @@ export default function HomeScreen({
               </View>
             ) : (
               <>
-                <View style={styles.qrPreviewPlaceholder}>
-                  <Ionicons name="qr-code-outline" size={46} color="#0F172A" />
-                  <Text style={styles.qrPlaceholderTitle}>
-                    Verified EIP-681 Receive Payload Ready
+                <View style={styles.setupRequiredBox}>
+                  <View style={styles.setupRequiredHeader}>
+                    <Ionicons name="lock-closed" size={18} color="#B45309" />
+                    <Text style={styles.setupRequiredTitle}>
+                      Receive QR Disabled — Awaiting Local QR Renderer Approval
+                    </Text>
+                  </View>
+                  <Text style={styles.setupRequiredText}>
+                    Local QR matrix rendering requires installing react-native-svg@15.16.0 and react-native-qrcode-svg@6.3.21, which are not currently in package.json. For privacy and security, wallet addresses are never sent to remote QR image services.
                   </Text>
-                  <Text style={styles.qrPlaceholderSub}>
-                    {buildReceiveQrPayload(wallet, effectiveUserId)}
-                  </Text>
-                  <Text style={styles.qrPackageNotice}>
-                    On-device SVG QR matrix rendering awaits package approval for react-native-svg@15.16.0 and react-native-qrcode-svg@6.3.21. Wallet addresses are never sent to external QR image servers.
+                  <Text style={[styles.qrPlaceholderSub, { marginTop: 8, marginBottom: 0 }]}>
+                    Validated EIP-681 URI: {buildReceiveQrPayload(wallet, effectiveUserId)}
                   </Text>
                 </View>
 
@@ -755,7 +957,7 @@ export default function HomeScreen({
               <View style={styles.qrVerifiedPill}>
                 <Ionicons name="checkmark-circle" size={16} color="#059669" />
                 <Text style={styles.qrVerifiedPillText}>
-                  Scanned & validated {qrScanMeta.networkName} ({qrScanMeta.tokenSymbol}) QR request
+                  {qrScanMeta.sourceLabel || 'Scanned'} & validated {qrScanMeta.networkName} ({qrScanMeta.tokenSymbol}) payment request
                 </Text>
               </View>
             )}
@@ -826,9 +1028,9 @@ export default function HomeScreen({
                   <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
                     <Text style={styles.infoKey}>Estimated Network Fee</Text>
                     <Text style={styles.infoVal}>
-                      {feeQuote?.feeEth
-                        ? `${feeQuote.feeEth} ETH (~$${feeQuote.feeUsdt} USDT)`
-                        : feeQuoteError || 'Unavailable (WDK signing required)'}
+                    {feeQuote?.feeEth
+                      ? `${feeQuote.feeEth} Sepolia ETH (testnet fee)`
+                      : feeQuoteError || 'Getting Sepolia network fee…'}
                     </Text>
                   </View>
                 </View>
@@ -841,16 +1043,35 @@ export default function HomeScreen({
                 </View>
 
                 {errorMsg ? <Text style={styles.sendError}>{errorMsg}</Text> : null}
+                {paymentResult?.status ? (
+                  <View style={styles.infoGridCard}>
+                    <Text style={styles.infoKey}>
+                      {paymentResult.status === 'successful' ? 'Successful — confirmed on Sepolia' : paymentResult.status === 'failed' ? 'Failed' : 'Pending — not yet confirmed'}
+                    </Text>
+                    {(paymentResult.transactionHash || paymentResult.userOperationHash) ? (
+                      <Text selectable style={styles.infoValMono}>
+                        {paymentResult.transactionHash || paymentResult.userOperationHash}
+                      </Text>
+                    ) : null}
+                    {paymentResult.status === 'pending' && !paymentResult.userOperationHash ? (
+                      <Text style={styles.infoVal}>Submission outcome is not known yet. Do not create another transfer with the same details until reconciled.</Text>
+                    ) : null}
+                  </View>
+                ) : null}
 
                 <TouchableOpacity
                   style={styles.sendPrimaryBtn}
-                  onPress={handleExecuteSend}
+                  onPress={paymentResult?.status === 'successful'
+                    ? () => { setShowSendModal(false); setSendStep(1); setRecipient(''); setNote(''); setQrScanMeta(null); setPaymentRequestId(''); setPaymentResult(null); setErrorMsg(''); }
+                    : paymentResult?.status === 'failed'
+                    ? () => { setPaymentRequestId(createPaymentRequestId()); setPaymentResult(null); setErrorMsg('Review the payment again. A new request will be created only after you approve.'); }
+                    : handleExecuteSend}
                   disabled={isSending}
                 >
                   {isSending ? (
                     <ActivityIndicator color="#FFFFFF" />
                   ) : (
-                    <Text style={styles.sendPrimaryText}>Approve & Send (Requires WDK Signing)</Text>
+                    <Text style={styles.sendPrimaryText}>{paymentResult?.status === 'successful' ? 'Done' : paymentResult?.status === 'pending' || paymentResult?.status === 'outcome-unknown' ? 'Check status' : paymentResult?.status === 'failed' ? 'Review a new payment' : 'Approve & Send'}</Text>
                   )}
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -885,14 +1106,15 @@ export default function HomeScreen({
       <Modal
         visible={showScanner}
         animationType="slide"
-        onRequestClose={() => setShowScanner(false)}
+        onRequestClose={handleCloseScanner}
       >
         <View style={styles.scannerScreen}>
-          {showScanner && (
+          {showScanner && cameraPermission?.granted ? (
             <CameraView
               key={cameraMountAttempt}
               style={[StyleSheet.absoluteFillObject, styles.cameraPreview]}
               facing="back"
+              enableTorch={torchEnabled}
               barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
               onCameraReady={() => {
                 setCameraReady(true);
@@ -901,37 +1123,126 @@ export default function HomeScreen({
               onMountError={(event) => {
                 setCameraReady(false);
                 setCameraMountError(
-                  event?.message || 'The camera could not start. Check camera permission and try again.'
+                  event?.nativeEvent?.message ||
+                    event?.message ||
+                    'The camera preview could not start. Check camera permission and tap Remount Camera.'
                 );
               }}
-              onBarcodeScanned={scanLockRef.current ? undefined : handleBarcodeScanned}
+              onBarcodeScanned={isScanLocked ? undefined : handleBarcodeScanned}
             />
-          )}
+          ) : null}
+
           <View style={styles.scannerHeader}>
-            <TouchableOpacity
-              style={styles.scannerClose}
-              onPress={() => {
-                setShowScanner(false);
-                setScannerError('');
-                scanLockRef.current = false;
-              }}
-            >
+            <TouchableOpacity style={styles.scannerClose} onPress={handleCloseScanner}>
               <Ionicons name="close" size={24} color="#FFFFFF" />
             </TouchableOpacity>
-            <Text style={styles.scannerTitle}>Scan Sepolia USDT QR</Text>
-            <View style={{ width: 44 }} />
+            <View style={{ alignItems: 'center' }}>
+              <Text style={styles.scannerTitle}>Scan Sepolia USDT QR</Text>
+              <Text style={{ color: '#94A3B8', fontSize: 11, fontWeight: '600', marginTop: 2 }}>
+                {!cameraPermission?.granted
+                  ? cameraPermission?.canAskAgain === false
+                    ? 'Permission permanently denied'
+                    : 'Permission required'
+                  : cameraMountError
+                  ? 'Camera mount error'
+                  : cameraReady
+                  ? 'Camera live · QR-only mode'
+                  : 'Starting camera preview…'}
+              </Text>
+            </View>
+            {cameraPermission?.granted ? (
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity style={styles.scannerClose} onPress={() => setTorchEnabled((enabled) => !enabled)} accessibilityLabel={torchEnabled ? 'Turn flashlight off' : 'Turn flashlight on'}>
+                  <Ionicons name={torchEnabled ? 'flash' : 'flash-outline'} size={20} color="#FFFFFF" />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.scannerClose} onPress={handleRetryCamera} accessibilityLabel="Remount camera">
+                  <Ionicons name="refresh" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={{ width: 44 }} />
+            )}
           </View>
 
-          <View style={styles.scanFrameWrap} pointerEvents="none">
-            <View
-              style={[
-                styles.scanFrame,
-                scannerError ? { borderColor: '#EF4444' } : { borderColor: '#00E676' },
-              ]}
-            />
-          </View>
+          {cameraPermission?.granted ? (
+            <View style={styles.scanFrameWrap} pointerEvents="none">
+              <View
+                style={[
+                  styles.scanFrame,
+                  scannerError || cameraMountError
+                    ? { borderColor: '#EF4444' }
+                    : cameraReady
+                    ? { borderColor: '#00E676' }
+                    : { borderColor: '#FBBF24' },
+                ]}
+              />
+            </View>
+          ) : (
+            <View style={{ flex: 1 }} />
+          )}
 
-          {scannerError ? (
+          {!cameraPermission?.granted ? (
+            <View style={styles.cameraMountErrorCard}>
+              <Ionicons
+                name={cameraPermission?.canAskAgain === false ? 'settings-outline' : 'camera-outline'}
+                size={28}
+                color="#DC2626"
+              />
+              <Text style={[styles.scannerErrorTitle, { marginTop: 8, marginBottom: 6, textAlign: 'center' }]}>
+                {cameraPermission?.canAskAgain === false
+                  ? 'Camera Permission Permanently Denied'
+                  : 'Camera Permission Required'}
+              </Text>
+              {cameraPermission?.canAskAgain === false ? (
+                <>
+                  <Text style={[styles.scannerErrorBody, { textAlign: 'center' }]}>
+                    Camera access was denied with “Don’t ask again”. To scan Ethereum Sepolia USDT QR codes, enable camera access in your device settings:
+                  </Text>
+                  <Text style={[styles.scannerErrorBody, { marginTop: 8, fontWeight: '600' }]}>
+                    1. Tap “Open Device Settings” below.{'\n'}
+                    2. Open Permissions → Camera.{'\n'}
+                    3. Select “Allow only while using the app”.{'\n'}
+                    4. Return to InterLink and tap “Re-check Permission”.
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 14, width: '100%' }}>
+                    <TouchableOpacity
+                      style={[styles.sendPrimaryBtn, { flex: 1, marginTop: 0, paddingVertical: 12 }]}
+                      onPress={handleOpenDeviceSettings}
+                    >
+                      <Text style={styles.sendPrimaryText}>Open Device Settings</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.sendPrimaryBtn,
+                        { flex: 1, marginTop: 0, paddingVertical: 12, backgroundColor: '#334155' },
+                      ]}
+                      onPress={handleRequestPermissionAgain}
+                    >
+                      <Text style={styles.sendPrimaryText}>Re-check Permission</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={[styles.scannerErrorBody, { textAlign: 'center' }]}>
+                    InterLink needs camera access to scan Ethereum Sepolia USDT payment request QR codes. Scanning only prefills the review screen and never submits a payment automatically.
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.sendPrimaryBtn, { marginTop: 14, width: '100%', paddingVertical: 12 }]}
+                    onPress={handleRequestPermissionAgain}
+                  >
+                    <Text style={styles.sendPrimaryText}>Grant Camera Permission</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+              <TouchableOpacity
+                style={[styles.sendBackBtn, { marginTop: 4 }]}
+                onPress={handleCloseScanner}
+              >
+                <Text style={styles.sendBackText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          ) : scannerError ? (
             <View style={styles.scannerErrorCard}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                 <Ionicons name="close-circle" size={20} color="#DC2626" />
@@ -952,14 +1263,24 @@ export default function HomeScreen({
                       flex: 1,
                       marginTop: 0,
                       paddingVertical: 12,
+                      backgroundColor: '#334155',
+                    },
+                  ]}
+                  onPress={handleRetryCamera}
+                >
+                  <Text style={styles.sendPrimaryText}>Remount Camera</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.sendPrimaryBtn,
+                    {
+                      flex: 1,
+                      marginTop: 0,
+                      paddingVertical: 12,
                       backgroundColor: '#FEE2E2',
                     },
                   ]}
-                  onPress={() => {
-                    setShowScanner(false);
-                    setScannerError('');
-                    scanLockRef.current = false;
-                  }}
+                  onPress={handleCloseScanner}
                 >
                   <Text style={[styles.sendPrimaryText, { color: '#991B1B' }]}>Cancel</Text>
                 </TouchableOpacity>
@@ -970,25 +1291,62 @@ export default function HomeScreen({
               Align an Ethereum Sepolia (Chain ID 11155111) USDT QR code within the frame. You will review all details before approving.
             </Text>
           )}
-          {!cameraMountError && !cameraReady ? (
+
+          {cameraPermission?.granted && !cameraMountError && !cameraReady ? (
             <View style={styles.cameraStatusOverlay} pointerEvents="none">
               <ActivityIndicator color="#00E676" size="small" />
               <Text style={styles.cameraStatusText}>Starting camera…</Text>
             </View>
           ) : null}
-          {cameraMountError ? (
+
+          {cameraPermission?.granted && cameraMountError ? (
             <View style={styles.cameraMountErrorCard}>
               <Ionicons name="camera-outline" size={24} color="#DC2626" />
-              <Text style={styles.scannerErrorTitle}>Camera preview unavailable</Text>
-              <Text style={styles.scannerErrorBody}>{cameraMountError}</Text>
-              <TouchableOpacity
-                style={[styles.sendPrimaryBtn, { marginTop: 12 }]}
-                onPress={handleRetryCamera}
-              >
-                <Text style={styles.sendPrimaryText}>Try camera again</Text>
-              </TouchableOpacity>
+              <Text style={[styles.scannerErrorTitle, { marginTop: 6, marginBottom: 4 }]}>
+                Camera preview unavailable
+              </Text>
+              <Text style={[styles.scannerErrorBody, { textAlign: 'center' }]}>
+                {cameraMountError}
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 14, width: '100%' }}>
+                <TouchableOpacity
+                  style={[styles.sendPrimaryBtn, { flex: 1, marginTop: 0, paddingVertical: 12 }]}
+                  onPress={handleRetryCamera}
+                >
+                  <Text style={styles.sendPrimaryText}>Remount Camera</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.sendPrimaryBtn,
+                    { flex: 1, marginTop: 0, paddingVertical: 12, backgroundColor: '#FEE2E2' },
+                  ]}
+                  onPress={handleCloseScanner}
+                >
+                  <Text style={[styles.sendPrimaryText, { color: '#991B1B' }]}>Close</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ) : null}
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showNfcScanner}
+        transparent
+        animationType="fade"
+        onRequestClose={cancelNfcScan}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.sendSheet, { alignItems: 'center' }]}>
+            <View style={[styles.qrChoiceIcon, { width: 64, height: 64, borderRadius: 20, backgroundColor: '#EFF6FF', marginBottom: 12 }]}>
+              <Ionicons name="radio-outline" size={32} color="#2563EB" />
+            </View>
+            <Text style={styles.sendTitle}>Tap NFC payment tag</Text>
+            <Text style={[styles.reviewCopy, { textAlign: 'center', marginTop: 8 }]}>{nfcStatus || 'Preparing NFC reader…'}</Text>
+            {isNfcScanning ? <ActivityIndicator color="#059669" style={{ marginBottom: 10 }} /> : null}
+            <Text style={[styles.reviewCopy, { textAlign: 'center' }]}>This reads a payment request only. It does not authorize or submit a transfer.</Text>
+            <TouchableOpacity style={styles.sendBackBtn} onPress={cancelNfcScan}><Text style={styles.sendBackText}>Cancel</Text></TouchableOpacity>
+          </View>
         </View>
       </Modal>
 
@@ -1357,7 +1715,7 @@ export default function HomeScreen({
         </View>
 
         <View style={styles.transactionContainer}>
-          {transactions.map((transaction, index) => {
+          {visibleTransactions.map((transaction, index) => {
             const sent =
               transaction.type === 'p2p_transfer' || transaction.type === 'transfer';
             const from =
@@ -1368,7 +1726,7 @@ export default function HomeScreen({
               ? transaction.recipientAddress || 'Recipient'
               : verifiedAddress || 'You';
             const dateValue = transaction.timestamp || transaction.createdAt;
-            const isLast = index === transactions.length - 1;
+            const isLast = index === visibleTransactions.length - 1;
 
             return (
               <View
@@ -1401,7 +1759,7 @@ export default function HomeScreen({
               </View>
             );
           })}
-          {!transactions.length && (
+          {!visibleTransactions.length && (
             <View style={styles.emptyState}>
               <Ionicons name="receipt-outline" size={32} color="#CBD5E1" />
               <Text style={styles.emptyTransactions}>
@@ -1545,7 +1903,9 @@ const styles = StyleSheet.create({
     paddingBottom: 60,
     position: 'relative',
   },
-  cameraPreview: { backgroundColor: '#0A0F1C', zIndex: 0 },
+  // Keep this transparent and without zIndex: Android's native camera surface
+  // can otherwise render as an opaque black layer inside a React Native Modal.
+  cameraPreview: {},
   cameraStatusOverlay: {
     position: 'absolute',
     top: '50%',
