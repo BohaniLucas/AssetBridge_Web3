@@ -121,9 +121,9 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       
-      {/* 1. PREMIUM PORTFOLIO CARD */}
+      
       <View style={styles.portfolioCard}>
-        {/* Decorative Background Elements */}
+        
         <View style={styles.decorCircleTop} />
         <View style={styles.decorCircleBottom} />
 
@@ -157,7 +157,7 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
         </View>
       </View>
 
-      {/* 2. FLOATING QUICK ACTIONS */}
+      
       <View style={[styles.actionGrid, styles.shadowSm]}>
         {[
           { label: 'Deposit', icon: 'add', color: '#3B82F6', action: onFaucet },
@@ -243,7 +243,7 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
         </View>
       </Modal>
 
-      {/* 3. ASSETS LIST (Redesigned from Cards to Rows) */}
+      
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Portfolio Assets</Text>
@@ -253,7 +253,7 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
         </View>
 
         <View style={styles.assetListContainer}>
-          {/* Asset 1 */}
+          
           <View style={styles.assetRow}>
             <View style={[styles.assetRowIcon, { backgroundColor: '#ECFDF5' }]}>
               <Text style={{ fontSize: 20, color: '#059669', fontWeight: '800' }}>$</Text>
@@ -270,7 +270,7 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
         </View>
       </View>
 
-      {/* 4. TRANSACTIONS */}
+      
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Recent Activity</Text>
@@ -308,7 +308,7 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
         </View>
       </View>
 
-      {/* MODALS REMAIN THE SAME BUT INHERIT NEW STYLES */}
+      
       
     </ScrollView>
   );

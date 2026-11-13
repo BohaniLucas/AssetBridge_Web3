@@ -1,5 +1,6 @@
 import { API_BASE_URL } from '../config/api';
 import { mobileAuthService } from './authService';
+import { offlineStorage } from './offlineStorage';
 
 const getHeaders = async (includeAuth = true) => {
   const headers = { 'Content-Type': 'application/json' };
@@ -19,32 +20,63 @@ const handleResponse = async (res) => {
   return data.data;
 };
 
+const cacheScope = async () => {
+  const session = await mobileAuthService.getStoredSession();
+  return session?.user?.id || 'anonymous';
+};
+
 class MobilePotsService {
   /**
    * List discoverable open stokvel groups
    */
   async getDiscoverableStokvels() {
-    const headers = await getHeaders(false);
-    const res = await fetch(`${API_BASE_URL}/stokvels`, { headers });
-    return handleResponse(res);
+    try {
+      const headers = await getHeaders(false);
+      const res = await fetch(`${API_BASE_URL}/stokvels`, { headers });
+      const data = await handleResponse(res);
+      await offlineStorage.set('stokvels:discoverable', data);
+      return data;
+    } catch (error) {
+      const cached = await offlineStorage.get('stokvels:discoverable');
+      if (cached) return cached;
+      throw error;
+    }
   }
 
   /**
    * List user's joined/created stokvels
    */
   async getMyStokvels() {
-    const headers = await getHeaders(true);
-    const res = await fetch(`${API_BASE_URL}/stokvels/my`, { headers });
-    return handleResponse(res);
+    const key = `stokvels:mine:${await cacheScope()}`;
+    try {
+      const headers = await getHeaders(true);
+      const res = await fetch(`${API_BASE_URL}/stokvels/my`, { headers });
+      const data = await handleResponse(res);
+      await offlineStorage.set(key, data);
+      return data;
+    } catch (error) {
+      const cached = await offlineStorage.get(key);
+      if (cached) return cached;
+      throw error;
+    }
   }
 
   /**
    * Get full stokvel details (schedule, roster, terms)
    */
   async getStokvelDetails(stokvelId) {
-    const headers = await getHeaders(true);
-    const res = await fetch(`${API_BASE_URL}/stokvels/${stokvelId}`, { headers });
-    return handleResponse(res);
+    const key = `stokvel:${await cacheScope()}:${stokvelId}`;
+    try {
+      const headers = await getHeaders(true);
+      const res = await fetch(`${API_BASE_URL}/stokvels/${stokvelId}`, { headers });
+      const data = await handleResponse(res);
+      await offlineStorage.set(key, data);
+      return data;
+    } catch (error) {
+      const cached = await offlineStorage.get(key);
+      if (cached) return cached;
+      throw error;
+    }
   }
 
   /**

@@ -45,7 +45,7 @@ export default function SessionLockOverlay({ visible, userEmail, onUnlocked, onS
       <SafeAreaView style={styles.safeArea}>
         <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
         <View style={styles.container}>
-          {/* Lock Icon Badge */}
+          
           <View style={styles.iconCircle}>
             <Ionicons name="lock-closed" size={32} color="#00C29A" />
           </View>
@@ -55,7 +55,7 @@ export default function SessionLockOverlay({ visible, userEmail, onUnlocked, onS
             Financial controls locked after 5 minutes of inactivity or app backgrounding.
           </Text>
 
-          {/* Account Card */}
+          
           <View style={styles.userCard}>
             <Ionicons name="person-circle-outline" size={20} color="#64748B" style={{ marginRight: 8 }} />
             <Text style={styles.userEmail} numberOfLines={1}>
@@ -63,7 +63,7 @@ export default function SessionLockOverlay({ visible, userEmail, onUnlocked, onS
             </Text>
           </View>
 
-          {/* Password Input */}
+          
           <View style={styles.inputContainer}>
             <TextInput
               style={styles.input}
@@ -98,7 +98,7 @@ export default function SessionLockOverlay({ visible, userEmail, onUnlocked, onS
             </View>
           ) : null}
 
-          {/* Unlock Button */}
+          
           <TouchableOpacity
             style={[styles.unlockBtn, isSubmitting && { opacity: 0.7 }]}
             onPress={handleUnlock}
@@ -108,11 +108,11 @@ export default function SessionLockOverlay({ visible, userEmail, onUnlocked, onS
             {isSubmitting ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.unlockBtnText}>Unlock Protected UI</Text>
+              <Text style={styles.unlockBtnText}>Restore Session</Text>
             )}
           </TouchableOpacity>
 
-          {/* Sign Out Option */}
+          
           <TouchableOpacity style={styles.signOutBtn} onPress={onSignOut} activeOpacity={0.7}>
             <Text style={styles.signOutText}>Sign Out Instead</Text>
           </TouchableOpacity>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -13,8 +13,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SEPOLIA_USDT_CONTRACT, SEPOLIA_CHAIN_ID } from '../config/api';
+import { offlineStorage } from '../services/offlineStorage';
 
-export default function CreatePotScreen({ onBack, onSave }) {
+export default function CreatePotScreen({ onBack, onSave, draftKey = 'create-stokvel:anonymous' }) {
   const [potName, setPotName] = useState('');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('20');
@@ -26,6 +27,32 @@ export default function CreatePotScreen({ onBack, onSave }) {
   const [timezone, setTimezone] = useState('Africa/Johannesburg');
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [draftReady, setDraftReady] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    offlineStorage.get(draftKey).then((draft) => {
+      if (!active || !draft) return;
+      setPotName(draft.potName || '');
+      setDescription(draft.description || '');
+      setAmount(draft.amount || '20');
+      setMaxMembers(draft.maxMembers || '5');
+      setFrequency(draft.frequency || 'monthly');
+      setDiscoverability(draft.discoverability || 'discoverable_open');
+      setDeadlineDays(draft.deadlineDays || '3');
+      setGraceDays(draft.graceDays || '2');
+      setTimezone(draft.timezone || 'Africa/Johannesburg');
+    }).finally(() => { if (active) setDraftReady(true); });
+    return () => { active = false; };
+  }, [draftKey]);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    offlineStorage.set(draftKey, {
+      potName, description, amount, maxMembers, frequency,
+      discoverability, deadlineDays, graceDays, timezone,
+    });
+  }, [draftKey, draftReady, potName, description, amount, maxMembers, frequency, discoverability, deadlineDays, graceDays, timezone]);
 
   // Pool math: N members * C contribution
   const parsedAmount = Number(amount) || 0;
@@ -65,6 +92,7 @@ export default function CreatePotScreen({ onBack, onSave }) {
       };
 
       await onSave?.(payload);
+      await offlineStorage.remove(draftKey);
       Alert.alert('Stokvel Created', 'Your Rotating Payout Stokvel has been created under immutable terms.', [
         { text: 'OK', onPress: () => onBack?.() },
       ]);
@@ -80,7 +108,7 @@ export default function CreatePotScreen({ onBack, onSave }) {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      {/* Header */}
+      
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={onBack} accessibilityLabel="Back">
           <Ionicons name="arrow-back" size={24} color="#0F172A" />
@@ -90,7 +118,7 @@ export default function CreatePotScreen({ onBack, onSave }) {
       </View>
 
       <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Scope Notice */}
+        
         <View style={styles.scopeNotice}>
           <Ionicons name="shield-checkmark" size={18} color="#059669" />
           <View style={{ flex: 1 }}>
@@ -101,7 +129,7 @@ export default function CreatePotScreen({ onBack, onSave }) {
           </View>
         </View>
 
-        {/* Step 1: Basic Group Info */}
+        
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.stepBadge}><Text style={styles.stepBadgeText}>1</Text></View>
@@ -161,14 +189,14 @@ export default function CreatePotScreen({ onBack, onSave }) {
           </View>
         </View>
 
-        {/* Step 2: Financial Terms & Schedule */}
+        
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.stepBadge}><Text style={styles.stepBadgeText}>2</Text></View>
             <Text style={styles.sectionTitle}>Financial Rules & Rotation</Text>
           </View>
 
-          {/* Token Badge */}
+          
           <View style={styles.tokenBadge}>
             <Ionicons name="link-outline" size={16} color="#0284C7" />
             <View style={{ flex: 1 }}>
@@ -225,7 +253,7 @@ export default function CreatePotScreen({ onBack, onSave }) {
             </View>
           </View>
 
-          {/* Expected Pool Math Box */}
+          
           <View style={styles.poolMathBox}>
             <View style={styles.poolMathHeader}>
               <Text style={styles.poolMathLabel}>EXPECTED CYCLE POOL (N × C)</Text>
@@ -239,7 +267,7 @@ export default function CreatePotScreen({ onBack, onSave }) {
             </Text>
           </View>
 
-          {/* Calendar Short-Month Rule & Grace Period */}
+          
           <View style={styles.calendarRuleBox}>
             <Ionicons name="calendar-outline" size={16} color="#475569" />
             <View style={{ flex: 1 }}>
@@ -251,7 +279,7 @@ export default function CreatePotScreen({ onBack, onSave }) {
           </View>
         </View>
 
-        {/* Terms Review Trigger */}
+        
         <TouchableOpacity
           style={styles.termsTriggerBtn}
           onPress={() => setShowTermsModal(true)}
@@ -265,7 +293,7 @@ export default function CreatePotScreen({ onBack, onSave }) {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Sticky Bottom Footer */}
+      
       <View style={styles.footer}>
         <TouchableOpacity
           style={[styles.submitBtn, isSaving && { opacity: 0.7 }]}
@@ -280,7 +308,7 @@ export default function CreatePotScreen({ onBack, onSave }) {
         </TouchableOpacity>
       </View>
 
-      {/* Constitution Preview Modal */}
+      
       <Modal visible={showTermsModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>

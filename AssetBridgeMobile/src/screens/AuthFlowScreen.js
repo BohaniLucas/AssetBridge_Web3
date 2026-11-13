@@ -50,7 +50,7 @@ function Brand({ light = false }) {
       <View style={styles.logo}>
         <Ionicons name="infinite" size={21} color={GREEN} />
       </View>
-      <Text style={[styles.brandName, light && styles.brandNameLight]}>AssetBridge</Text>
+      <Text style={[styles.brandName, light && styles.brandNameLight]}>InterLink</Text>
     </View>
   );
 }
@@ -165,10 +165,6 @@ export default function AuthFlowScreen({ onAuthenticated }) {
           <View style={styles.welcomeScreen}>
             <View style={styles.welcomeTop}>
               <Brand light />
-              <View style={styles.previewPill}>
-                <View style={styles.previewDot} />
-                <Text style={styles.previewText}>EARLY ACCESS</Text>
-              </View>
             </View>
 
             <View style={styles.heroWrap}>
@@ -210,7 +206,7 @@ export default function AuthFlowScreen({ onAuthenticated }) {
             <View style={styles.welcomeActions}>
               <PrimaryButton title="Get started" icon="arrow-forward" onPress={() => { setIntroIndex(0); go('intro'); }} />
               <TouchableOpacity accessibilityRole="button" onPress={() => go('login')} style={styles.loginTextButton}>
-                <Text style={styles.loginText}>I already have an account <Text style={styles.loginArrow}>→</Text></Text>
+                <Text style={styles.loginText}>I already have an account <Text style={styles.loginArrow}></Text></Text>
               </TouchableOpacity>
             </View>
             <Text style={styles.previewDisclosure}>Preview build · wallet and payment features may be unavailable until connected to a verified network.</Text>
@@ -269,7 +265,7 @@ export default function AuthFlowScreen({ onAuthenticated }) {
               <View style={styles.formIcon}><Ionicons name={screen === 'login' ? 'hand-right-outline' : 'sparkles-outline'} size={24} color="#059669" /></View>
               <Text style={styles.formEyebrow}>{screen === 'login' ? 'WELCOME BACK' : 'YOUR JOURNEY STARTS HERE'}</Text>
               <Text style={styles.formTitle}>{screen === 'login' ? 'Good to see you.' : 'Create your account.'}</Text>
-              <Text style={styles.formSubtitle}>{screen === 'login' ? 'Sign in to continue to AssetBridge.' : 'A few details to get your account ready.'}</Text>
+              <Text style={styles.formSubtitle}>{screen === 'login' ? 'Sign in to continue to InterLink.' : 'A few details to get your account ready.'}</Text>
             </View>
 
             {screen === 'signup' ? (
@@ -325,7 +321,7 @@ export default function AuthFlowScreen({ onAuthenticated }) {
             ) : null}
 
             <View style={styles.switchAuthRow}>
-              <Text style={styles.switchAuthText}>{screen === 'login' ? 'New to AssetBridge?' : 'Already have an account?'}</Text>
+              <Text style={styles.switchAuthText}>{screen === 'login' ? 'New to InterLink?' : 'Already have an account?'}</Text>
               <TouchableOpacity onPress={() => go(screen === 'login' ? 'signup' : 'login')}>
                 <Text style={styles.switchAuthLink}>{screen === 'login' ? ' Create account' : ' Log in'}</Text>
               </TouchableOpacity>

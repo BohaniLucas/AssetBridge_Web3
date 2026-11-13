@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '../config/api';
+import { offlineStorage } from './offlineStorage';
 
 class MobileMarketService {
   /**
@@ -6,12 +7,21 @@ class MobileMarketService {
    */
   async getMarkets(category = 'all') {
     const url = `${API_BASE_URL}/market/all${category && category !== 'all' ? `?category=${encodeURIComponent(category)}` : ''}`;
-    const res = await fetch(url);
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || json.success === false) {
-      throw new Error(json.message || 'Failed to retrieve market data.');
+    const cacheKey = `markets:${category || 'all'}`;
+    try {
+      const res = await fetch(url);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.success === false) {
+        throw new Error(json.message || 'Failed to retrieve market data.');
+      }
+      const data = json.data || { assets: [], status: null };
+      await offlineStorage.set(cacheKey, data);
+      return data;
+    } catch (error) {
+      const cached = await offlineStorage.get(cacheKey);
+      if (cached) return cached;
+      throw error;
     }
-    return json.data || { assets: [], status: null };
   }
 
   /**
@@ -32,12 +42,18 @@ class MobileMarketService {
    */
   async getAssetDetail(idOrSymbol) {
     const url = `${API_BASE_URL}/market/asset/${encodeURIComponent(idOrSymbol)}`;
-    const res = await fetch(url);
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || json.success === false) {
-      throw new Error(json.message || 'Asset details not found.');
+    const cacheKey = `market-detail:${idOrSymbol}`;
+    try {
+      const res = await fetch(url);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.success === false) throw new Error(json.message || 'Asset details not found.');
+      await offlineStorage.set(cacheKey, json.data);
+      return json.data;
+    } catch (error) {
+      const cached = await offlineStorage.get(cacheKey);
+      if (cached) return cached;
+      throw error;
     }
-    return json.data;
   }
 
   /**
@@ -46,12 +62,18 @@ class MobileMarketService {
    */
   async getAssetHistory(idOrSymbol, range = '24h') {
     const url = `${API_BASE_URL}/market/history/${encodeURIComponent(idOrSymbol)}?range=${encodeURIComponent(range)}`;
-    const res = await fetch(url);
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || json.success === false) {
-      throw new Error(json.message || 'Failed to retrieve chart history.');
+    const cacheKey = `market-history:${idOrSymbol}:${range}`;
+    try {
+      const res = await fetch(url);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.success === false) throw new Error(json.message || 'Failed to retrieve chart history.');
+      await offlineStorage.set(cacheKey, json.data);
+      return json.data;
+    } catch (error) {
+      const cached = await offlineStorage.get(cacheKey);
+      if (cached) return cached;
+      throw error;
     }
-    return json.data;
   }
 
   /**

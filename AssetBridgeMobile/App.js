@@ -12,6 +12,13 @@ import {
   AppState,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Network from 'expo-network';
+// import { WalletProvider } from '@tetherto/wdk-react-native-provider';
+import { bundle } from './.wdk';
+
+import { WdkAppProvider } from '@tetherto/wdk-react-native-core';
+import { Stack } from 'expo-router';
+import { wdkConfigs } from '../src/config/wdk';
 
 import HomeScreen from './src/screens/HomeScreen';
 import RemittanceScreen from './src/screens/RemittanceScreen';
@@ -80,7 +87,23 @@ const AnimatedTabButton = ({ item, isFocused, onPress }) => {
   );
 };
 
+function OfflineBanner() {
+  return (
+    <View style={styles.offlineBanner} accessibilityRole="alert">
+      <View style={styles.offlineIconWrap}>
+        <Ionicons name="cloud-offline-outline" size={18} color="#92400E" />
+      </View>
+      <View style={styles.offlineMessage}>
+        <Text style={styles.offlineTitle}>You’re offline</Text>
+        <Text style={styles.offlineSubtitle}>Showing saved information. Payments are unavailable.</Text>
+      </View>
+    </View>
+  );
+}
+
 export default function App() {
+  const networkState = Network.useNetworkState();
+  const isOffline = networkState.isConnected === false || networkState.isInternetReachable === false;
   const [currentTab, setCurrentTab] = useState('wallet');
   const [wallet, setWallet] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -175,6 +198,7 @@ export default function App() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <StatusBar barStyle="dark-content" backgroundColor="#F1F4F8" />
+        {isOffline && <OfflineBanner />}
         <View style={styles.loadingScreen}>
           <View style={styles.logoBadge}><Ionicons name="infinite" size={24} color="#00E676" /></View>
           <Text style={styles.loadingBrand}>AssetBridge</Text>
@@ -188,6 +212,7 @@ export default function App() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <StatusBar barStyle="light-content" backgroundColor="#0A0F1C" />
+        {isOffline && <OfflineBanner />}
         <AuthFlowScreen onAuthenticated={(nextSession) => setSession(nextSession)} />
       </SafeAreaView>
     );
@@ -203,14 +228,19 @@ export default function App() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#F1F4F8" />
+      {isOffline && <OfflineBanner />}
+      
+       <WdkAppProvider bundle={{ bundle }} wdkConfigs={wdkConfigs}>
+        <Stack />
+        </WdkAppProvider>
 
-      {/* --- MINIMALIST TOP NAV --- */}
+      
       <View style={styles.topNav}>
         <View style={styles.brandGroup}>
           <View style={styles.logoBadge}>
             <Ionicons name="infinite" size={22} color="#FFFFFF" />
           </View>
-          <Text style={styles.brandTitle}>AssetBridge</Text>
+          <Text style={styles.brandTitle}>InterLink</Text>
         </View>
 
         <TouchableOpacity style={styles.profileChip} activeOpacity={0.7} onPress={confirmSignOut} accessibilityLabel="Sign out">
@@ -221,13 +251,13 @@ export default function App() {
         </TouchableOpacity>
       </View>
 
-      {/* --- SCREEN BODY --- */}
+      
       <View
         style={styles.screenContainer}
         onTouchStart={() => sessionLockService.recordActivity()}
       >
         {currentTab === 'createPot' ? (
-          <CreatePotScreen onBack={() => setCurrentTab('stokvel')} onSave={async (potData) => {
+          <CreatePotScreen draftKey={`create-stokvel:${session.user.id}`} onBack={() => setCurrentTab('stokvel')} onSave={async (potData) => {
             await mobilePotsService.createPot(potData, wallet?.userId);
           }} />
         ) : currentTab === 'wallet' && (
@@ -255,7 +285,7 @@ export default function App() {
         {currentTab === 'markets' && <MarketsScreen />}
       </View>
 
-      {/* --- FLUID FLOATING BOTTOM NAV --- */}
+      
       <View style={styles.floatingNavContainer} pointerEvents="box-none">
         <View style={[styles.floatingNavBar, styles.ultraShadow]}>
           {TABS.map((tab) => (
@@ -269,7 +299,7 @@ export default function App() {
         </View>
       </View>
 
-      {/* Session Inactivity & Background Lock Overlay */}
+      
       <SessionLockOverlay
         visible={Boolean(session && isLocked)}
         userEmail={session?.user?.email}
@@ -286,6 +316,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F4F8', // Soft cool gray keeps white surfaces distinct
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
+  offlineBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFBEB', borderBottomWidth: 1, borderBottomColor: '#FDE68A', paddingHorizontal: 18, paddingVertical: 11, gap: 11 },
+  offlineIconWrap: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#FEF3C7', alignItems: 'center', justifyContent: 'center' },
+  offlineMessage: { flex: 1 },
+  offlineTitle: { color: '#78350F', fontSize: 13, fontWeight: '800' },
+  offlineSubtitle: { color: '#92400E', fontSize: 11, fontWeight: '500', marginTop: 2 },
   loadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F4F8' },
   loadingBrand: { color: '#0A0F1C', fontSize: 22, fontWeight: '900', marginTop: 13 },
   loadingCopy: { color: '#64748B', fontSize: 13, marginTop: 8 },

@@ -1,5 +1,6 @@
 import { API_BASE_URL } from '../config/api';
 import { mobileAuthService } from './authService';
+import { offlineStorage } from './offlineStorage';
 
 const authHeaders = async () => {
   const token = await mobileAuthService.getAccessToken();
@@ -34,13 +35,24 @@ class MobileWalletService {
       const json = await res.json();
       if (res.ok && json.data) {
         this.memoryCache[userId] = json.data;
+        await offlineStorage.set(`wallet:${userId}`, json.data);
         return json.data;
       }
     } catch (error) {
+      const cachedWallet = await offlineStorage.get(`wallet:${userId}`);
+      if (cachedWallet) {
+        this.memoryCache[userId] = cachedWallet;
+        return { ...cachedWallet, isOfflineCache: true };
+      }
       throw new Error(`Unable to load your wallet. No local/demo balance is available. ${error.message}`);
     }
 
     if (this.memoryCache[userId]) return this.memoryCache[userId];
+    const cachedWallet = await offlineStorage.get(`wallet:${userId}`);
+    if (cachedWallet) {
+      this.memoryCache[userId] = cachedWallet;
+      return { ...cachedWallet, isOfflineCache: true };
+    }
     throw new Error('Wallet service returned no wallet.');
   }
 
@@ -109,10 +121,13 @@ class MobileWalletService {
     try {
       const res = await fetch(`${API_BASE_URL}/wallet/${encodeURIComponent(userId)}/transactions`, { headers: await authHeaders() });
       const json = await res.json();
-      if (res.ok && Array.isArray(json.data)) return json.data;
-      return [];
+      if (res.ok && Array.isArray(json.data)) {
+        await offlineStorage.set(`transactions:${userId}`, json.data);
+        return json.data;
+      }
+      return (await offlineStorage.get(`transactions:${userId}`)) || [];
     } catch {
-      return [];
+      return (await offlineStorage.get(`transactions:${userId}`)) || [];
     }
   }
 }

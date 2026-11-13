@@ -15,11 +15,13 @@ import {
   remittanceService,
   generateIdempotencyKey,
 } from '../services/remittanceService';
+import { mobileAuthService } from '../services/authService';
+import { offlineStorage } from '../services/offlineStorage';
 
 const FLOW_TABS = [
-  { id: 'app_to_app', label: 'AssetBridge User', sub: 'By @username' },
-  { id: 'gogo_claim', label: 'Gogo Claim Link', sub: 'No app needed' },
-  { id: 'phone_payout', label: 'Bank / PayShap', sub: 'ShapID Proxy' },
+  { id: 'app_to_app', label: 'AssetBridge User', sub: 'Global · @username' },
+  { id: 'gogo_claim', label: 'Recipient Claim', sub: 'OTP protected' },
+  { id: 'phone_payout', label: 'Local Payout', sub: 'Partner availability varies' },
 ];
 
 const AMOUNT_PRESETS = ['10', '25', '50', '100'];
@@ -55,6 +57,7 @@ export default function RemittanceScreen() {
   const [formError, setFormError] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [showCorridorModal, setShowCorridorModal] = useState(false);
+  const [showPaymentConfirmation, setShowPaymentConfirmation] = useState(false);
 
   // Public Gogo Claim Receiver Modal (for testing/verifying a claim link on mobile)
   const [showReceiverClaimModal, setShowReceiverClaimModal] = useState(false);
@@ -68,6 +71,41 @@ export default function RemittanceScreen() {
   const [receiverDevOtp, setReceiverDevOtp] = useState('');
   const [receiverSessionToken, setReceiverSessionToken] = useState('');
   const [receiverError, setReceiverError] = useState('');
+  const [draftKey, setDraftKey] = useState(null);
+  const [draftReady, setDraftReady] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    mobileAuthService.getStoredSession().then((session) => {
+      if (!active) return;
+      const key = `remittance-draft:${session?.user?.id || 'anonymous'}`;
+      setDraftKey(key);
+      return offlineStorage.get(key).then((draft) => {
+        if (!active) return;
+        if (draft) {
+          setFlowType(draft.flowType || 'app_to_app');
+          setSelectedCorridorCode(draft.selectedCorridorCode || 'APP-USDT');
+          setSelectedRailId(draft.selectedRailId || 'sepolia_usdt_erc20');
+          setSendAmount(draft.sendAmount || '25');
+          setRecipientUsername(draft.recipientUsername || '');
+          setRecipientName(draft.recipientName || '');
+          setRecipientPhone(draft.recipientPhone || '');
+          setTransferNote(draft.transferNote || '');
+        }
+        setDraftReady(true);
+      });
+    }).catch(() => { if (active) setDraftReady(true); });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!draftKey || !draftReady) return;
+    offlineStorage.set(draftKey, {
+      flowType, selectedCorridorCode, selectedRailId, sendAmount,
+      recipientUsername, recipientName, recipientPhone, transferNote,
+      updatedAt: new Date().toISOString(),
+    });
+  }, [draftKey, draftReady, flowType, selectedCorridorCode, selectedRailId, sendAmount, recipientUsername, recipientName, recipientPhone, transferNote]);
 
   const loadData = useCallback(async () => {
     try {
@@ -97,24 +135,34 @@ export default function RemittanceScreen() {
     setCreatedClaimResult(null);
     setRiskAcknowledged(false);
 
-    if (modeId === 'app_to_app') {
-      setSelectedCorridorCode('APP-USDT');
-      setSelectedRailId('sepolia_usdt_erc20');
-    } else if (modeId === 'gogo_claim') {
-      setSelectedCorridorCode('ZA-ZAR');
-      setSelectedRailId('za_gogo_claim');
-    } else {
-      setSelectedCorridorCode('ZA-ZAR');
-      setSelectedRailId('za_payshap_proxy');
+    const appCorridor = corridors.find((item) => item.corridorCode === 'APP-USDT');
+    const claimCorridor = corridors.find((item) => item.corridorCode === 'ZA-ZAR') ||
+      corridors.find((item) => item.rails?.some((rail) => rail.identifierType === 'gogo_claim'));
+    const payoutCorridor = corridors.find((item) => item.rails?.some((rail) => rail.isExecutablePayout)) ||
+      corridors.find((item) => item.corridorCode !== 'APP-USDT');
+    const initialCorridor = modeId === 'app_to_app' ? appCorridor : modeId === 'gogo_claim' ? claimCorridor : payoutCorridor;
+    if (initialCorridor) {
+      setSelectedCorridorCode(initialCorridor.corridorCode);
+      const initialRail = modeId === 'gogo_claim'
+        ? initialCorridor.rails?.find((rail) => rail.identifierType === 'gogo_claim')
+        : modeId === 'phone_payout'
+          ? initialCorridor.rails?.find((rail) => rail.isExecutablePayout)
+          : initialCorridor.rails?.[0];
+      if (initialRail || initialCorridor.rails?.[0]) setSelectedRailId((initialRail || initialCorridor.rails[0]).id);
     }
   };
 
   const currentCorridor =
     corridors.find((c) => c.corridorCode === selectedCorridorCode) || corridors[0] || null;
+  const currentRail = currentCorridor?.rails?.find((rail) => rail.id === selectedRailId) || currentCorridor?.rails?.[0] || null;
 
-  const filteredCorridors = corridors.filter((c) =>
-    flowType === 'app_to_app' ? c.corridorCode === 'APP-USDT' : c.corridorCode !== 'APP-USDT'
-  );
+  const filteredCorridors = corridors.filter((corridor) => {
+    if (flowType === 'app_to_app') return corridor.corridorCode === 'APP-USDT';
+    if (flowType === 'gogo_claim') {
+      return corridor.corridorCode === 'APP-USDT' || corridor.rails?.some((rail) => rail.identifierType === 'gogo_claim');
+    }
+    return corridor.corridorCode !== 'APP-USDT';
+  });
 
   const handleVerifyUsername = async () => {
     setFormError('');
@@ -212,7 +260,7 @@ export default function RemittanceScreen() {
   };
 
   const handleApproveTransfer = async () => {
-    if (!activeTransfer) return;
+    if (!activeTransfer) return false;
     setFormError('');
     setIsSubmitting(true);
     try {
@@ -224,8 +272,10 @@ export default function RemittanceScreen() {
         'Transfer approved. Submit your 32-byte Sepolia ERC-20 funding transaction hash below.'
       );
       await loadData();
+      return true;
     } catch (err) {
       setFormError(err.message);
+      return false;
     } finally {
       setIsSubmitting(false);
     }
@@ -363,18 +413,18 @@ export default function RemittanceScreen() {
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
     >
-      {/* Header Banner */}
+      
       <View style={styles.heroBanner}>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>SEPOLIA TESTNET · MAINNET FUNDS DISABLED</Text>
-        </View>
-        <Text style={styles.heroTitle}>Remittance & Gogo Claims</Text>
+
+        
+        
+        <Text style={styles.heroTitle}>Global Remittance</Text>
         <Text style={styles.heroSub}>
-          Send to a verified AssetBridge @username, create a one-time OTP-protected Gogo claim link, or check regulated local payout availability.
+          Send to AssetBridge users worldwide, create a verified recipient claim, or check local payout availability by destination.
         </Text>
       </View>
 
-      {/* Flow Mode Selector */}
+      
       <View style={styles.flowTabsRow}>
         {FLOW_TABS.map((t) => {
           const isSel = flowType === t.id;
@@ -395,7 +445,7 @@ export default function RemittanceScreen() {
         })}
       </View>
 
-      {/* Main Configuration Card */}
+      
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>1. Corridor & Payout Rail</Text>
         <TouchableOpacity
@@ -416,7 +466,7 @@ export default function RemittanceScreen() {
           <Text style={styles.selectorArrow}>Change ▼</Text>
         </TouchableOpacity>
 
-        {/* Flow A: AssetBridge Username Lookup */}
+        
         {flowType === 'app_to_app' ? (
           <View style={styles.recipientSection}>
             <Text style={styles.sectionTitle}>2. Verify Recipient @Username</Text>
@@ -462,10 +512,10 @@ export default function RemittanceScreen() {
         ) : (
           <View style={styles.recipientSection}>
             <Text style={styles.sectionTitle}>2. Recipient Details</Text>
-            {currentCorridor?.rails?.[0]?.proxyDisclosure ? (
+            {currentRail?.proxyDisclosure ? (
               <View style={styles.infoBanner}>
                 <Text style={styles.infoBannerText}>
-                  {currentCorridor.rails[0].proxyDisclosure}
+                  {currentRail.proxyDisclosure}
                 </Text>
               </View>
             ) : null}
@@ -484,8 +534,10 @@ export default function RemittanceScreen() {
 
             <Text style={styles.fieldLabel}>
               {flowType === 'phone_payout'
-                ? 'Registered PayShap ShapID Phone (+27...)'
-                : 'Recipient Mobile Phone (+27...)'}
+                ? currentRail?.identifierLabel || 'Recipient payout details'
+                : currentCorridor?.corridorCode === 'ZA-ZAR'
+                  ? 'Recipient mobile '
+                  : 'Recipient mobile phone (international format)'}
             </Text>
             <TextInput
               style={styles.input}
@@ -494,14 +546,23 @@ export default function RemittanceScreen() {
                 setRecipientPhone(txt);
                 setLockedQuote(null);
               }}
-              placeholder="+27 82 000 0000"
+              placeholder={flowType === 'phone_payout'
+                ? currentRail?.placeholder || 'Enter destination details'
+                : currentCorridor?.corridorCode === 'ZA-ZAR' ? '+27 82 000 0000' : '+254 700 000 000'}
               placeholderTextColor="#94A3B8"
-              keyboardType="phone-pad"
+              keyboardType={flowType === 'phone_payout' && currentRail?.identifierType === 'bank_account' ? 'number-pad' : 'default'}
             />
+            {flowType === 'phone_payout' && !currentRail?.isExecutablePayout ? (
+              <View style={styles.infoBanner}>
+                <Text style={styles.infoBannerText}>
+                  {currentCorridor?.availabilityLabel || 'A local payout partner is not connected for this destination yet. You can view reference rates; payouts are not available.'}
+                </Text>
+              </View>
+            ) : null}
           </View>
         )}
 
-        {/* Amount Input */}
+        
         <Text style={[styles.sectionTitle, { marginTop: 14 }]}>3. Send Amount (USDT)</Text>
         <View style={styles.amountInputRow}>
           <Text style={styles.currencyPrefix}>$</Text>
@@ -563,7 +624,7 @@ export default function RemittanceScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Locked Quote Review & Approval Card */}
+      
       {lockedQuote && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Locked Quote Review</Text>
@@ -637,9 +698,9 @@ export default function RemittanceScreen() {
               }
               onPress={handleCreateIntentOrClaim}
             >
-              <Text style={styles.sendBtnText}>
+            <Text style={styles.sendBtnText}>
                 {flowType === 'phone_payout' && !lockedQuote.fiatPayoutExecutable
-                  ? 'Not Available Yet (PayShap Partner Unconfigured)'
+                  ? 'Unavailable: Local Payout Partner Not Connected'
                   : isSubmitting
                   ? 'Processing…'
                   : flowType === 'gogo_claim'
@@ -651,7 +712,7 @@ export default function RemittanceScreen() {
         </View>
       )}
 
-      {/* Active Transfer State Machine & One-Time Claim Display */}
+      
       {activeTransfer && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>
@@ -702,7 +763,7 @@ export default function RemittanceScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.authorizeBtn}
-                onPress={handleApproveTransfer}
+                onPress={() => setShowPaymentConfirmation(true)}
               >
                 <Text style={styles.authorizeBtnText}>Approve Final Terms</Text>
               </TouchableOpacity>
@@ -741,7 +802,62 @@ export default function RemittanceScreen() {
         </View>
       )}
 
-      {/* Sender Gogo Claim Links Tracking */}
+      {userTransfers.length > 0 && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Transaction History</Text>
+          <Text style={styles.sectionSub}>Completed and in-progress remittances</Text>
+          {userTransfers.map((transfer) => {
+            const recipient = transfer.recipientUsername
+              ? `@${String(transfer.recipientUsername).replace(/^@/, '')}`
+              : transfer.recipientDisplayName || transfer.recipientPhoneMasked || transfer.recipientWalletAddress || transfer.escrowOrRecipientAddress || 'Recipient';
+            const conversionAvailable = transfer.receiveAmountFormatted && transfer.receiveCurrency;
+            return (
+              <View key={transfer.id} style={styles.historyRecord}>
+                <View style={styles.historyRecordHeader}>
+                  <Text style={styles.historyRecordRecipient} numberOfLines={2}>{recipient}</Text>
+                  <View style={styles.historyStatusPill}>
+                    <Text style={styles.historyStatusText}>{String(transfer.status || 'unknown').replace(/_/g, ' ').toUpperCase()}</Text>
+                  </View>
+                </View>
+                {transfer.recipientWalletAddress ? (
+                  <Text style={styles.historyDetail} selectable>Address: {transfer.recipientWalletAddress}</Text>
+                ) : null}
+                <View style={styles.historyDetailRow}>
+                  <Text style={styles.historyDetailLabel}>Amount sent</Text>
+                  <Text style={styles.historyDetail}>{transfer.sendAmountFormatted || '—'} {transfer.sendCurrency || 'USDT'}</Text>
+                </View>
+                <View style={styles.historyDetailRow}>
+                  <Text style={styles.historyDetailLabel}>Fee</Text>
+                  <Text style={styles.historyDetail}>{transfer.feeAmountFormatted || '0.00'} {transfer.sendCurrency || 'USDT'} · Quote {String(transfer.quoteId || '—').slice(0, 8)}</Text>
+                </View>
+                <View style={styles.historyDetailRow}>
+                  <Text style={styles.historyDetailLabel}>Network</Text>
+                  <Text style={styles.historyDetail}>{transfer.blockchainNetwork || '—'}</Text>
+                </View>
+                <View style={styles.historyDetailRow}>
+                  <Text style={styles.historyDetailLabel}>Token</Text>
+                  <Text style={styles.historyDetail}>{transfer.sendCurrency || 'USDT'}{transfer.tokenContract ? ` · ${transfer.tokenContract}` : ''}</Text>
+                </View>
+                {conversionAvailable ? (
+                  <View style={styles.historyConversion}>
+                    <Text style={styles.historyDetailLabel}>Conversion</Text>
+                    <Text style={styles.historyDetail}>
+                      1 {transfer.sendCurrency || 'USDT'} = {transfer.fxRateDisplay || '—'} {transfer.receiveCurrency} · Recipient gets {transfer.receiveSymbol || ''}{transfer.receiveAmountFormatted} {transfer.receiveCurrency}
+                    </Text>
+                  </View>
+                ) : null}
+                <Text style={styles.historyTimestamp}>
+                  {transfer.completedAt || transfer.fundedAt || transfer.createdAt
+                    ? new Date(transfer.completedAt || transfer.fundedAt || transfer.createdAt).toLocaleString()
+                    : 'Date unavailable'}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      
       {senderClaims.length > 0 && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Your Gogo Claim Links</Text>
@@ -777,7 +893,95 @@ export default function RemittanceScreen() {
         </View>
       )}
 
-      {/* Corridor Selection Modal */}
+      
+      <Modal
+        visible={showPaymentConfirmation}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPaymentConfirmation(false)}
+      >
+        <View style={styles.confirmBackdrop}>
+          <View style={styles.confirmSheet}>
+            <View style={styles.confirmHeader}>
+              <View style={styles.confirmIcon}><Text style={styles.confirmIconText}>↗</Text></View>
+              <TouchableOpacity onPress={() => setShowPaymentConfirmation(false)} accessibilityLabel="Close confirmation">
+                <Text style={styles.closeBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.confirmTitle}>Confirm your payment</Text>
+            <Text style={styles.confirmSubtitle}>Review these details before approving and funding the transfer.</Text>
+
+            <View style={styles.confirmDetails}>
+              <View style={styles.confirmDetailRow}>
+                <Text style={styles.confirmLabel}>Recipient</Text>
+                <Text style={styles.confirmValue} selectable>
+                  {activeTransfer?.recipientUsername
+                    ? `@${String(activeTransfer.recipientUsername).replace(/^@/, '')}`
+                    : activeTransfer?.recipientDisplayName || activeTransfer?.recipientPhoneMasked || activeTransfer?.recipientWalletAddress || activeTransfer?.escrowOrRecipientAddress || '—'}
+                </Text>
+              </View>
+              {(activeTransfer?.recipientWalletAddress || activeTransfer?.escrowOrRecipientAddress) ? (
+                <View style={styles.confirmDetailRow}>
+                  <Text style={styles.confirmLabel}>Recipient address</Text>
+                  <Text style={styles.confirmValue} selectable>{activeTransfer.recipientWalletAddress || activeTransfer.escrowOrRecipientAddress}</Text>
+                </View>
+              ) : null}
+              <View style={styles.confirmDetailRow}>
+                <Text style={styles.confirmLabel}>Total amount</Text>
+                <Text style={styles.confirmValue}>{activeTransfer?.sendAmountFormatted || '—'} {activeTransfer?.sendCurrency || 'USDT'}</Text>
+              </View>
+              <View style={styles.confirmDetailRow}>
+                <Text style={styles.confirmLabel}>Fee & quote</Text>
+                <Text style={styles.confirmValue}>
+                  {activeTransfer?.feeAmountFormatted || '0.00'} {activeTransfer?.sendCurrency || 'USDT'} · {String(activeTransfer?.quoteId || '—').slice(0, 12)}
+                </Text>
+              </View>
+              <View style={styles.confirmDetailRow}>
+                <Text style={styles.confirmLabel}>Network</Text>
+                <Text style={styles.confirmValue}>{activeTransfer?.blockchainNetwork || '—'}</Text>
+              </View>
+              <View style={styles.confirmDetailRow}>
+                <Text style={styles.confirmLabel}>Token</Text>
+                <Text style={styles.confirmValue} selectable>
+                  {activeTransfer?.sendCurrency || 'USDT'}{activeTransfer?.tokenContract ? ` · ${activeTransfer.tokenContract}` : ''}
+                </Text>
+              </View>
+              <View style={[styles.confirmDetailRow, styles.confirmConversion]}>
+                <Text style={styles.confirmLabel}>Conversion</Text>
+                <Text style={styles.confirmValue}>
+                  {activeTransfer?.fxRateDisplay
+                    ? `1 ${activeTransfer.sendCurrency || 'USDT'} = ${activeTransfer.fxRateDisplay} ${activeTransfer.receiveCurrency}; recipient gets ${activeTransfer.receiveSymbol || ''}${activeTransfer.receiveAmountFormatted} ${activeTransfer.receiveCurrency}`
+                    : 'No currency conversion'}
+                </Text>
+              </View>
+            </View>
+
+            {formError ? <Text style={styles.errText}>{formError}</Text> : null}
+            <View style={styles.confirmActions}>
+              <TouchableOpacity
+                style={styles.confirmCancelBtn}
+                onPress={() => setShowPaymentConfirmation(false)}
+                disabled={isSubmitting}
+              >
+                <Text style={styles.confirmCancelText}>Go back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmPayBtn, isSubmitting && { opacity: 0.7 }]}
+                onPress={async () => {
+                  const approved = await handleApproveTransfer();
+                  if (approved) setShowPaymentConfirmation(false);
+                }}
+                disabled={isSubmitting}
+              >
+                {isSubmitting
+                  ? <ActivityIndicator color="#FFFFFF" />
+                  : <Text style={styles.confirmPayText}>Confirm & continue</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={showCorridorModal} animationType="slide" transparent>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalSheet}>
@@ -797,7 +1001,12 @@ export default function RemittanceScreen() {
                   ]}
                   onPress={() => {
                     setSelectedCorridorCode(c.corridorCode);
-                    if (c.rails?.[0]) setSelectedRailId(c.rails[0].id);
+                    const rail = flowType === 'gogo_claim'
+                      ? c.rails?.find((item) => item.identifierType === 'gogo_claim')
+                      : flowType === 'phone_payout'
+                        ? c.rails?.find((item) => item.isExecutablePayout)
+                        : c.rails?.[0];
+                    if (rail || c.rails?.[0]) setSelectedRailId((rail || c.rails[0]).id);
                     setLockedQuote(null);
                     setShowCorridorModal(false);
                   }}
@@ -816,7 +1025,7 @@ export default function RemittanceScreen() {
         </View>
       </Modal>
 
-      {/* Public Receiver Gogo Claim Verification Modal */}
+      
       <Modal visible={showReceiverClaimModal} animationType="slide" transparent>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalSheet}>
@@ -827,7 +1036,7 @@ export default function RemittanceScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Language Selector for Plain-Language AI Guide */}
+            
             <View style={styles.langRow}>
               {['en', 'zu', 'st', 'af'].map((l) => (
                 <TouchableOpacity
@@ -1195,6 +1404,33 @@ const styles = StyleSheet.create({
   },
   historyTitle: { fontSize: 12, fontWeight: '700', color: '#0F172A' },
   historySub: { fontSize: 11, color: '#64748B', marginTop: 2 },
+  historyRecord: { borderTopWidth: 1, borderTopColor: '#E8EDF3', paddingTop: 12, marginTop: 10, gap: 6 },
+  historyRecordHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
+  historyRecordRecipient: { flex: 1, fontSize: 13, fontWeight: '800', color: '#0F172A' },
+  historyStatusPill: { backgroundColor: '#EAF9F3', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 },
+  historyStatusText: { fontSize: 9, fontWeight: '800', color: '#047857' },
+  historyDetailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
+  historyDetailLabel: { color: '#64748B', fontSize: 10, fontWeight: '700' },
+  historyDetail: { flex: 1, color: '#334155', fontSize: 10, textAlign: 'right' },
+  historyConversion: { borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 6, gap: 3 },
+  historyTimestamp: { color: '#94A3B8', fontSize: 9, marginTop: 2 },
+  confirmBackdrop: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(10,15,28,0.56)', padding: 18 },
+  confirmSheet: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 20, maxHeight: '90%' },
+  confirmHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  confirmIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EAF9F3' },
+  confirmIconText: { fontSize: 23, fontWeight: '800', color: '#047857' },
+  confirmTitle: { color: '#0F172A', fontSize: 20, fontWeight: '900' },
+  confirmSubtitle: { color: '#64748B', fontSize: 12, lineHeight: 17, marginTop: 4, marginBottom: 14 },
+  confirmDetails: { backgroundColor: '#F8FAFC', borderRadius: 16, padding: 12, gap: 10, maxHeight: 380 },
+  confirmDetailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
+  confirmLabel: { width: 92, color: '#64748B', fontSize: 11, fontWeight: '700' },
+  confirmValue: { flex: 1, color: '#0F172A', fontSize: 11, fontWeight: '700', textAlign: 'right' },
+  confirmConversion: { borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 9 },
+  confirmActions: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  confirmCancelBtn: { flex: 1, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 13, paddingVertical: 13, alignItems: 'center' },
+  confirmCancelText: { color: '#334155', fontSize: 12, fontWeight: '800' },
+  confirmPayBtn: { flex: 1.4, backgroundColor: '#00A77F', borderRadius: 13, paddingVertical: 13, alignItems: 'center', justifyContent: 'center' },
+  confirmPayText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
   smallTagBtn: {
     backgroundColor: '#EAF9F3',
     paddingHorizontal: 10,

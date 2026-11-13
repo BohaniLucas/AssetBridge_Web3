@@ -193,7 +193,7 @@ export default function StokvelScreen({ onNavigate }) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
-      {/* Top Banner */}
+      
       <View style={styles.heroBanner}>
         <View style={styles.scopeTag}>
           <Ionicons name="repeat" size={14} color="#00E676" />
@@ -205,7 +205,7 @@ export default function StokvelScreen({ onNavigate }) {
         </Text>
       </View>
 
-      {/* Action Row: Create & Join */}
+      
       <View style={styles.actionRow}>
         <TouchableOpacity
           style={styles.createBtn}
@@ -230,7 +230,7 @@ export default function StokvelScreen({ onNavigate }) {
         </TouchableOpacity>
       </View>
 
-      {/* Main Mode Toggle: My Stokvels vs Discover */}
+      
       <View style={styles.tabToggleRow}>
         <TouchableOpacity
           style={[styles.tabToggleBtn, activeTab === 'my' && styles.tabToggleBtnActive]}
@@ -340,7 +340,7 @@ export default function StokvelScreen({ onNavigate }) {
             </View>
           ) : (
             <>
-              {/* Group Pill Selector */}
+              
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.potsNav} contentContainerStyle={{ gap: 10 }}>
                 {myPots.map((p) => {
                   const isSel = p.id === activePotId;
@@ -359,7 +359,7 @@ export default function StokvelScreen({ onNavigate }) {
 
               {activePotDetails && (
                 <View style={styles.potDetailCard}>
-                  {/* Card Header & Status Badges */}
+                  
                   <View style={styles.potDetailHeader}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.detailTitle}>{activePotDetails.name}</Text>
@@ -379,7 +379,7 @@ export default function StokvelScreen({ onNavigate }) {
                     </View>
                   </View>
 
-                  {/* Pending Approved Application Banner */}
+                  
                   {activePotDetails.my_request?.status === 'approved' && (
                     <View style={styles.reservationBanner}>
                       <Ionicons name="time-outline" size={18} color="#D97706" />
@@ -398,7 +398,7 @@ export default function StokvelScreen({ onNavigate }) {
                     </View>
                   )}
 
-                  {/* Financial Stats */}
+                  
                   <View style={styles.statsRow}>
                     <View style={styles.statBox}>
                       <Text style={styles.statLabel}>Contribution</Text>
@@ -423,7 +423,7 @@ export default function StokvelScreen({ onNavigate }) {
                     </View>
                   </View>
 
-                  {/* Non-Custodial Financial Protection Callout */}
+                  
                   <View style={styles.financialGuardBox}>
                     <Ionicons name="information-circle-outline" size={18} color="#0369A1" />
                     <View style={{ flex: 1 }}>
@@ -434,7 +434,7 @@ export default function StokvelScreen({ onNavigate }) {
                     </View>
                   </View>
 
-                  {/* Quick Action Buttons for Members */}
+                  
                   <View style={styles.quickActionGrid}>
                     {isOwnerOrCoAdmin && (
                       <TouchableOpacity
@@ -474,7 +474,7 @@ export default function StokvelScreen({ onNavigate }) {
                     </TouchableOpacity>
                   </View>
 
-                  {/* Pending Join Requests (Owner / Co-Admin review inbox) */}
+                  
                   {isOwnerOrCoAdmin && (activePotDetails.join_requests || []).filter((r) => r.status === 'pending').length > 0 && (
                     <View style={styles.reviewInbox}>
                       <Text style={styles.inboxTitle}>Pending Join Applications</Text>
@@ -505,7 +505,7 @@ export default function StokvelScreen({ onNavigate }) {
                     </View>
                   )}
 
-                  {/* Rotation Roster & Schedule */}
+                  
                   <View style={styles.rosterSection}>
                     <Text style={styles.rosterHeading}>Rotation Order & Schedule</Text>
                     <Text style={styles.rosterSub}>
@@ -542,7 +542,7 @@ export default function StokvelScreen({ onNavigate }) {
         </View>
       )}
 
-      {/* MODAL 1: Generate & Share Direct Invite */}
+      
       <Modal visible={showInviteModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -580,7 +580,7 @@ export default function StokvelScreen({ onNavigate }) {
         </View>
       </Modal>
 
-      {/* MODAL 2: Join via Token Preview & Explicit Accept */}
+      
       <Modal visible={showJoinByTokenModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -644,7 +644,7 @@ export default function StokvelScreen({ onNavigate }) {
         </View>
       </Modal>
 
-      {/* MODAL 3: Apply to Discoverable Group */}
+      
       <Modal visible={showApplyModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -672,7 +672,7 @@ export default function StokvelScreen({ onNavigate }) {
         </View>
       </Modal>
 
-      {/* MODAL 4: Terms Constitution Viewer */}
+      
       <Modal visible={showTermsModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -694,7 +694,7 @@ export default function StokvelScreen({ onNavigate }) {
         </View>
       </Modal>
 
-      {/* MODAL 5: Audit Trail Viewer */}
+      
       <Modal visible={showAuditModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -724,7 +724,7 @@ export default function StokvelScreen({ onNavigate }) {
         </View>
       </Modal>
 
-      {/* MODAL 6: Raise Dispute Notice */}
+      
       <Modal visible={showDisputeModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>

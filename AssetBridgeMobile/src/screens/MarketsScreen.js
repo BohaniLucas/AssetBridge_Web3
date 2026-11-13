@@ -188,13 +188,13 @@ export default function MarketsScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        {/* Header */}
+        
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Markets</Text>
           <Text style={styles.headerSub}>Live crypto prices, equities & currency rates</Text>
         </View>
 
-        {/* Search Bar */}
+        
         <View style={styles.searchContainer}>
           <Ionicons name="search" size={18} color="#94A3B8" style={styles.searchIcon} />
           <TextInput
@@ -214,7 +214,7 @@ export default function MarketsScreen() {
           )}
         </View>
 
-        {/* Category Filter Chips */}
+        
         {searchResults === null && (
           <View style={styles.categoryScrollWrapper}>
             <ScrollView
@@ -241,7 +241,7 @@ export default function MarketsScreen() {
           </View>
         )}
 
-        {/* Market List */}
+        
         {isLoading && !refreshing ? (
           <View style={styles.centerContainer}>
             <ActivityIndicator size="large" color="#00C29A" />
@@ -286,7 +286,7 @@ export default function MarketsScreen() {
                   }}
                   activeOpacity={0.7}
                 >
-                  {/* Left: Logo & Names */}
+                  
                   <View style={styles.assetLeft}>
                     {asset.logoUrl ? (
                       <Image source={{ uri: asset.logoUrl }} style={styles.assetLogo} resizeMode="contain" />
@@ -330,7 +330,7 @@ export default function MarketsScreen() {
                     </View>
                   </View>
 
-                  {/* Right: Price & 24h Change */}
+                  
                   <View style={styles.assetRight}>
                     <Text style={styles.assetPrice}>{formatPrice(asset.price)}</Text>
                     {isForex ? (
@@ -363,7 +363,7 @@ export default function MarketsScreen() {
           </ScrollView>
         )}
 
-        {/* Asset Detail Modal */}
+        
         <Modal
           visible={!!selectedAsset}
           animationType="slide"
@@ -372,7 +372,7 @@ export default function MarketsScreen() {
         >
           {selectedAsset && (
             <SafeAreaView style={styles.modalContainer}>
-              {/* Modal Header */}
+              
               <View style={styles.modalHeader}>
                 <TouchableOpacity
                   style={styles.modalCloseBtn}
@@ -391,7 +391,7 @@ export default function MarketsScreen() {
               </View>
 
               <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-                {/* Price Display */}
+                
                 <View style={styles.modalPriceCard}>
                   <View style={styles.modalPriceHeader}>
                     {selectedAsset.logoUrl ? (
@@ -439,7 +439,7 @@ export default function MarketsScreen() {
                     </View>
                   </View>
 
-                  {/* Range Switcher */}
+                  
                   <View style={styles.rangeSwitcher}>
                     {TIME_RANGES.map((r) => {
                       const isSel = selectedRange === r.id;
@@ -456,7 +456,7 @@ export default function MarketsScreen() {
                     })}
                   </View>
 
-                  {/* Chart Container */}
+                  
                   <View style={styles.chartWrapper}>
                     {isHistoryLoading ? (
                       <View style={styles.chartEmptyBox}>
@@ -476,7 +476,7 @@ export default function MarketsScreen() {
                           </View>
                         </View>
 
-                        {/* Truthful Native Candle Bar Sparkline */}
+                        
                         <View style={styles.sparklineContainer}>
                           {historyData.points.slice(-48).map((pt, idx, arr) => {
                             const normalized = Math.max(
@@ -529,7 +529,7 @@ export default function MarketsScreen() {
                   </View>
                 </View>
 
-                {/* Key Market Metrics */}
+                
                 <View style={styles.sectionCard}>
                   <Text style={styles.sectionTitle}>Market Attributes</Text>
                   <View style={styles.statsGrid}>
@@ -568,7 +568,7 @@ export default function MarketsScreen() {
                   </View>
                 </View>
 
-                {/* Actions */}
+                
                 <View style={styles.actionButtonsRow}>
                   <TouchableOpacity style={[styles.tradeActionBtn, styles.tradeActionBtnBuy]} activeOpacity={0.8}>
                     <Text style={styles.tradeActionBtnText}>Buy {selectedAsset.baseSymbol || selectedAsset.symbol}</Text>

@@ -11,9 +11,17 @@
           "cameraPermission": "Allow AssetBridgeMobile to use your camera to scan QR codes.",
           "recordAudioAndroid": false,
           "barcodeScannerEnabled": true
+        },
+
+         "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 29
+          }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-status-bar"
     ],
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -33,3 +41,4 @@
     }
   }
 }
+

@@ -8,6 +8,12 @@
 
 import { API_BASE_URL } from '../config/api';
 import { mobileAuthService } from './authService';
+import { offlineStorage } from './offlineStorage';
+
+async function userCacheKey(name) {
+  const session = await mobileAuthService.getStoredSession();
+  return `remittance:${name}:${session?.user?.id || 'anonymous'}`;
+}
 
 async function getAuthHeaders() {
   const token = await mobileAuthService.getAccessToken();
@@ -25,14 +31,20 @@ export const REGIONS = ['All', 'App-to-App', 'Africa', 'Europe & UK'];
 
 export const remittanceService = {
   async fetchDestinations() {
-    const res = await fetch(`${API_BASE_URL}/remittance/destinations`, {
-      headers: { Accept: 'application/json' },
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(json.message || 'Unable to load remittance corridors from backend.');
+    try {
+      const res = await fetch(`${API_BASE_URL}/remittance/destinations`, {
+        headers: { Accept: 'application/json' },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.message || 'Unable to load remittance corridors from backend.');
+      const destinations = Array.isArray(json.data) ? json.data : [];
+      await offlineStorage.set('remittance:destinations', destinations);
+      return destinations;
+    } catch (error) {
+      const cached = await offlineStorage.get('remittance:destinations');
+      if (cached) return cached;
+      throw error;
     }
-    return Array.isArray(json.data) ? json.data : [];
   },
 
   async resolveUsername(username) {
@@ -165,14 +177,17 @@ export const remittanceService = {
   },
 
   async listTransfers() {
+    const cacheKey = await userCacheKey('transfers');
     try {
       const headers = await getAuthHeaders();
       const res = await fetch(`${API_BASE_URL}/remittance/transfers`, { headers });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) return [];
-      return Array.isArray(json.data) ? json.data : [];
+      if (!res.ok) throw new Error(json.message || 'Unable to load transfer history.');
+      const transfers = Array.isArray(json.data) ? json.data : [];
+      await offlineStorage.set(cacheKey, transfers);
+      return transfers;
     } catch {
-      return [];
+      return (await offlineStorage.get(cacheKey)) || [];
     }
   },
 
@@ -206,14 +221,17 @@ export const remittanceService = {
   },
 
   async getSenderClaims() {
+    const cacheKey = await userCacheKey('claims');
     try {
       const headers = await getAuthHeaders();
       const res = await fetch(`${API_BASE_URL}/claims/sender`, { headers });
       const json = await res.json().catch(() => ({}));
-      if (res.ok && Array.isArray(json.data)) return json.data;
-      return [];
+      if (!res.ok) throw new Error(json.message || 'Unable to load claim history.');
+      const claims = Array.isArray(json.data) ? json.data : [];
+      await offlineStorage.set(cacheKey, claims);
+      return claims;
     } catch {
-      return [];
+      return (await offlineStorage.get(cacheKey)) || [];
     }
   },
 

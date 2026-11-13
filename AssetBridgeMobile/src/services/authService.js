@@ -1,4 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import { API_BASE_URL } from '../config/api';
 import { sessionLockService } from './sessionLockService';
 
@@ -23,9 +25,23 @@ const jsonRequest = async (path, body, accessToken) => {
 };
 
 const persistSession = async (session) => {
-  if (await SecureStore.isAvailableAsync()) {
+  if (Platform.OS === 'web') {
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  } else if (await SecureStore.isAvailableAsync()) {
     await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(session));
   }
+};
+
+const readSavedSession = async () => {
+  const saved = Platform.OS === 'web'
+    ? await AsyncStorage.getItem(SESSION_KEY)
+    : (await SecureStore.isAvailableAsync() ? await SecureStore.getItemAsync(SESSION_KEY) : null);
+  return saved ? JSON.parse(saved) : null;
+};
+
+const clearSavedSession = async () => {
+  if (Platform.OS === 'web') return AsyncStorage.removeItem(SESSION_KEY);
+  if (await SecureStore.isAvailableAsync()) return SecureStore.deleteItemAsync(SESSION_KEY);
 };
 
 export const mobileAuthService = {
@@ -58,11 +74,9 @@ export const mobileAuthService = {
   },
 
   async restoreSession() {
-    if (!(await SecureStore.isAvailableAsync())) return null;
-    const saved = await SecureStore.getItemAsync(SESSION_KEY);
-    if (!saved) return null;
+    const session = await readSavedSession();
+    if (!session) return null;
     try {
-      const session = JSON.parse(saved);
       if (!session?.token) throw new Error('Session is incomplete.');
       let activeSession = session;
       let profile;
@@ -85,11 +99,15 @@ export const mobileAuthService = {
 
       return restored;
     } catch (error) {
-      if (error.status === 401 || error.message === 'Session is incomplete.') {
-        await SecureStore.deleteItemAsync(SESSION_KEY).catch(() => {});
+      if ((error.status && error.status < 500 && error.status !== 429) || error.message === 'Session is incomplete.') {
+        await clearSavedSession().catch(() => {});
         await sessionLockService.clear();
+        return null;
       }
-      return null;
+      // Keep the saved account available in read-only offline mode. Server-backed
+      // actions still require a valid token and network connection.
+      await sessionLockService.init();
+      return session;
     }
   },
 
@@ -97,10 +115,8 @@ export const mobileAuthService = {
    * Re-authenticates user with password to unlock session without full logout.
    */
   async reauthenticate(password) {
-    if (!(await SecureStore.isAvailableAsync())) throw new Error('Secure storage unavailable.');
-    const saved = await SecureStore.getItemAsync(SESSION_KEY);
-    if (!saved) throw new Error('No active session to re-authenticate.');
-    const session = JSON.parse(saved);
+    const session = await readSavedSession();
+    if (!session) throw new Error('No active session to re-authenticate.');
     const email = session.user?.email;
     if (!email) throw new Error('Account email not found in session.');
 
@@ -134,9 +150,7 @@ export const mobileAuthService = {
       serverRevocationConfirmed = false;
       revocationError = err.message || 'Server unreachable';
     } finally {
-      if (await SecureStore.isAvailableAsync()) {
-        await SecureStore.deleteItemAsync(SESSION_KEY).catch(() => {});
-      }
+      await clearSavedSession().catch(() => {});
       await sessionLockService.clear();
     }
 
@@ -150,12 +164,10 @@ export const mobileAuthService = {
   },
 
   async getAccessToken() {
-    if (!(await SecureStore.isAvailableAsync())) return null;
-    const saved = await SecureStore.getItemAsync(SESSION_KEY);
-    try {
-      return saved ? JSON.parse(saved).token || null : null;
-    } catch {
-      return null;
-    }
+    try { return (await readSavedSession())?.token || null; } catch { return null; }
+  },
+
+  async getStoredSession() {
+    try { return await readSavedSession(); } catch { return null; }
   },
 };
