@@ -224,17 +224,17 @@ function App() {
   };
 
   const handleUserLogout = async () => {
-    await authService.signOutUser();
+    const result = await authService.signOut();
     setCurrentUser(null);
-    setSecurityNotice('');
+    setSecurityNotice(result?.warning || '');
     window.location.hash = '#/';
     setCurrentView('landing');
   };
 
-  const handleAdminLogout = () => {
-    authService.signOutAdmin();
+  const handleAdminLogout = async () => {
+    const result = await authService.signOut();
     setCurrentAdmin(null);
-    setAdminNotice('');
+    setAdminNotice(result?.warning || '');
     window.location.hash = '#/admin/login';
     setCurrentView('admin_login');
   };

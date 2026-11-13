@@ -48,14 +48,19 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
   // Copy success indicator
   const [copied, setCopied] = useState(false);
 
-  const usdtBalance = wallet ? Number(wallet.balanceUsdt || 0) : 1000.0;
-  const portfolioTotalUsd = usdtBalance + 1.25 * 236.40 + 12950 / 129.50;
+  const usdtBalance = wallet?.balanceUsdt != null && Number.isFinite(Number(wallet.balanceUsdt))
+    ? Number(wallet.balanceUsdt)
+    : null;
 
   useEffect(() => {
     let active = true;
-    mobileWalletService.getTransactions(wallet?.userId).then((items) => {
-      if (active) setTransactions(items || []);
-    });
+    mobileWalletService.getTransactions(wallet?.userId)
+      .then((items) => {
+        if (active) setTransactions(items || []);
+      })
+      .catch(() => {
+        if (active) setTransactions([]);
+      });
     return () => { active = false; };
   }, [wallet?.userId, wallet?.balanceUsdt]);
 
@@ -78,7 +83,6 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
 
   const handleBarcodeScanned = ({ data }) => {
     setShowScanner(false);
-    setScannedValue(data);
     Alert.alert('QR code scanned', data, [{ text: 'OK' }]);
   };
 
@@ -134,21 +138,18 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
         <View style={styles.balanceContainer}>
           <Text style={styles.balanceCurrency}>$</Text>
           <Text style={styles.balanceAmount}>
-            {portfolioTotalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {usdtBalance == null ? '—' : usdtBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </Text>
         </View>
 
         <View style={styles.profitRow}>
-          <View style={styles.profitPill}>
-            <Ionicons name="trending-up" size={14} color="#10B981" />
-            <Text style={styles.profitText}>+$124.50 (2.4%)</Text>
-          </View>
-          <Text style={styles.profitTimeframe}>Today</Text>
+          <Ionicons name="information-circle-outline" size={15} color="#94A3B8" />
+          <Text style={styles.profitTimeframe}>{wallet?.address ? 'Network balance' : 'Connect a verified wallet to view your balance'}</Text>
         </View>
 
         <View style={styles.addressBar}>
           <Text style={styles.addressValue} numberOfLines={1}>
-            {wallet?.address ? `${wallet.address.slice(0, 10)}...${wallet.address.slice(-6)}` : 'Wallet loading...'}
+            {wallet?.address ? `${wallet.address.slice(0, 10)}...${wallet.address.slice(-6)}` : 'No wallet connected'}
           </Text>
           <TouchableOpacity style={styles.copyBtn} onPress={handleCopy}>
             <Ionicons name={copied ? "checkmark" : "copy-outline"} size={16} color="#FFFFFF" />
@@ -262,38 +263,8 @@ export default function HomeScreen({ wallet, onRefresh, onTransfer, onFaucet, on
               <Text style={styles.assetRowSub}>tUSDT</Text>
             </View>
             <View style={styles.assetRowValues}>
-              <Text style={styles.assetRowAmount}>${usdtBalance.toFixed(2)}</Text>
+            <Text style={styles.assetRowAmount}>{usdtBalance == null ? 'Unavailable' : `$${usdtBalance.toFixed(2)}`}</Text>
               <Text style={styles.assetRowChange}>Stablecoin</Text>
-            </View>
-          </View>
-
-          {/* Asset 2 */}
-          <View style={styles.assetRow}>
-            <View style={[styles.assetRowIcon, { backgroundColor: '#EEF2FF' }]}>
-              <Ionicons name="logo-apple" size={24} color="#4F46E5" />
-            </View>
-            <View style={styles.assetRowInfo}>
-              <Text style={styles.assetRowName}>Apple Inc.</Text>
-              <Text style={styles.assetRowSub}>1.25 tAAPL</Text>
-            </View>
-            <View style={styles.assetRowValues}>
-              <Text style={styles.assetRowAmount}>$295.50</Text>
-              <Text style={[styles.assetRowChange, { color: '#10B981' }]}>+1.82%</Text>
-            </View>
-          </View>
-          
-          {/* Asset 3 */}
-          <View style={[styles.assetRow, { borderBottomWidth: 0 }]}>
-            <View style={[styles.assetRowIcon, { backgroundColor: '#FFFBEB' }]}>
-              <Text style={{ fontSize: 20, color: '#D97706', fontWeight: '800' }}>K</Text>
-            </View>
-            <View style={styles.assetRowInfo}>
-              <Text style={styles.assetRowName}>Kenyan Shilling</Text>
-              <Text style={styles.assetRowSub}>12,950 tKES</Text>
-            </View>
-            <View style={styles.assetRowValues}>
-              <Text style={styles.assetRowAmount}>$100.00</Text>
-              <Text style={styles.assetRowChange}>0% Spread</Text>
             </View>
           </View>
         </View>

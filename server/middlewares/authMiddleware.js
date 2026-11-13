@@ -3,8 +3,17 @@ import { walletService } from '../services/walletService.js';
 import { errorResponse } from '../utils/responseHelper.js';
 
 /**
+ * Explicit development-only gate for test accounts.
+ * Must NEVER be enabled in production (fails closed if NODE_ENV === 'production').
+ */
+export const isDevTestAccountEnabled = () => {
+  return process.env.NODE_ENV !== 'production' && process.env.ENABLE_DEV_TEST_ACCOUNT === 'true';
+};
+
+/**
  * Authentication verification middleware
- * Protects financial routes from unauthenticated callers
+ * Protects financial and user routes from unauthenticated callers.
+ * Strictly derives authenticated user identity and role from Supabase token.
  */
 export const requireAuth = async (req, res, next) => {
   try {
@@ -18,6 +27,21 @@ export const requireAuth = async (req, res, next) => {
 
     if (!token || token.length < 5) {
       return errorResponse(res, 'Access denied. Invalid authentication token.', 401);
+    }
+
+    // Support developer test session ONLY in development when explicitly enabled
+    if (token.startsWith('assetbridge_test_token_')) {
+      if (!isDevTestAccountEnabled()) {
+        return errorResponse(res, 'Access denied. Development test tokens are rejected in this environment.', 401);
+      }
+      const id = token.replace('assetbridge_test_token_', '');
+      req.user = {
+        id: id || '00000000-0000-0000-0000-000000000001',
+        email: 'test@assetbridge.africa',
+        role: 'USER',
+        fullName: 'Test User',
+      };
+      return next();
     }
 
     if (isSupabaseConfigured() && supabase) {

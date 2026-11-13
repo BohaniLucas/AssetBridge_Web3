@@ -1,99 +1,138 @@
 import { claimService } from '../services/claimService.js';
 import { successResponse, errorResponse } from '../utils/responseHelper.js';
 
-export const createClaim = (req, res) => {
+function assertSenderIdentity(req) {
+  const supplied = req.body?.senderUserId || req.body?.userId;
+  if (supplied && String(supplied).toLowerCase() !== String(req.user?.id).toLowerCase()) {
+    const err = new Error('Forbidden: Client-supplied senderUserId does not match authenticated token.');
+    err.status = 403;
+    throw err;
+  }
+}
+
+export const createClaim = async (req, res) => {
   try {
+    assertSenderIdentity(req);
     const {
-      senderUserId,
-      senderName,
-      amountZar,
-      amountUsdt,
+      quoteId,
+      idempotencyKey,
       recipientName,
       recipientPhone,
       note,
+      riskAcknowledged,
       originUrl,
-    } = req.body;
+    } = req.body || {};
 
-    if (!senderUserId || !amountZar) {
-      return errorResponse(res, 'senderUserId and amountZar are required', 400);
-    }
-
-    const claim = claimService.createClaimLink({
-      senderUserId,
-      senderName: senderName || 'Nomsa',
-      amountZar,
-      amountUsdt: amountUsdt || Number(amountZar) / 20.0,
-      recipientName: recipientName || 'Gogo',
-      recipientPhone: recipientPhone || '+27 82 555 0192',
-      note: note || 'Groceries and monthly support',
+    const result = await claimService.createClaimLink({
+      senderUser: req.user,
+      quoteId,
+      idempotencyKey,
+      recipientName,
+      recipientPhone,
+      note,
+      riskAcknowledged,
       originUrl: originUrl || req.headers.origin || 'http://localhost:5173',
     });
 
-    return successResponse(res, claim, 'Escrow claim link generated successfully', 201);
+    const status = result.idempotentReplay ? 200 : 201;
+    return successResponse(
+      res,
+      result,
+      result.idempotentReplay
+        ? 'Idempotent Gogo claim link retrieved'
+        : 'One-time Gogo claim reference created',
+      status
+    );
   } catch (err) {
-    return errorResponse(res, err.message, 400);
+    return errorResponse(res, err.message, err.status || 400);
   }
 };
 
-export const getClaim = (req, res) => {
+export const getPublicClaim = (req, res) => {
   try {
     const { id } = req.params;
-    const claim = claimService.getClaimLink(id);
-    if (!claim) {
-      return errorResponse(res, 'Claim link not found or invalid', 404);
-    }
-    return successResponse(res, claim, 'Claim link retrieved');
+    const lang = req.query.lang || 'en';
+    const summary = claimService.getPublicClaimSummary(id, lang);
+    return successResponse(res, summary, 'Public claim summary retrieved');
   } catch (err) {
-    return errorResponse(res, err.message, 500);
+    return errorResponse(res, err.message, err.status || 404);
   }
 };
 
-export const claimMoney = (req, res) => {
+export const requestClaimOtp = (req, res) => {
   try {
     const { id } = req.params;
-    const { secretCode, phoneNumber, smsCode, pin } = req.body;
-
-    const result = claimService.claimMoney({
+    const { claimToken, phoneNumber } = req.body || {};
+    const result = claimService.requestClaimOtp({
       claimId: id,
-      secretCode,
+      claimToken,
       phoneNumber,
-      smsCode,
-      pin,
     });
-
-    return successResponse(res, result, 'Money successfully claimed and account created!');
+    return successResponse(res, result, result.message);
   } catch (err) {
-    return errorResponse(res, err.message, 400);
+    return errorResponse(res, err.message, err.status || 400);
+  }
+};
+
+export const verifyClaimOtp = (req, res) => {
+  try {
+    const { id } = req.params;
+    const { otpCode } = req.body || {};
+    const result = claimService.verifyClaimOtp({
+      claimId: id,
+      otpCode,
+    });
+    return successResponse(res, result, result.message);
+  } catch (err) {
+    return errorResponse(res, err.message, err.status || 400);
+  }
+};
+
+export const confirmClaimPayout = (req, res) => {
+  try {
+    const { id } = req.params;
+    const { verificationSessionToken, payoutMethod, recipientWalletAddress } = req.body || {};
+    const result = claimService.confirmClaimPayout({
+      claimId: id,
+      verificationSessionToken,
+      payoutMethod,
+      recipientWalletAddress,
+    });
+    return successResponse(res, result, result.message);
+  } catch (err) {
+    return errorResponse(res, err.message, err.status || 400);
   }
 };
 
 export const refundClaim = (req, res) => {
   try {
+    assertSenderIdentity(req);
     const { id } = req.params;
-    const { senderUserId } = req.body;
-
-    if (!senderUserId) {
-      return errorResponse(res, 'senderUserId is required to authorize refund', 400);
-    }
-
     const result = claimService.refundClaimLink({
       claimId: id,
-      senderUserId,
+      senderUser: req.user,
     });
-
     return successResponse(res, result, result.message);
   } catch (err) {
-    return errorResponse(res, err.message, 400);
+    return errorResponse(res, err.message, err.status || 400);
   }
 };
 
 export const getSenderClaims = (req, res) => {
   try {
-    const { userId } = req.params;
-    const claims = claimService.getSenderClaims(userId);
+    const requestedUserId = req.params.userId;
+    if (
+      requestedUserId &&
+      String(requestedUserId).toLowerCase() !== String(req.user.id).toLowerCase() &&
+      req.user.role !== 'ADMIN'
+    ) {
+      return errorResponse(res, 'Forbidden: Cannot view another user’s claim links.', 403);
+    }
+
+    const originUrl = req.headers.origin || 'http://localhost:5173';
+    const claims = claimService.getSenderClaims(req.user.id, originUrl);
     return successResponse(res, claims, 'Sender claim links retrieved');
   } catch (err) {
-    return errorResponse(res, err.message, 500);
+    return errorResponse(res, err.message, err.status || 500);
   }
 };
-

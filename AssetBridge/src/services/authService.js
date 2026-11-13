@@ -1,7 +1,7 @@
 /**
- * Authentication Service
- * Strictly separates User Authentication and Administrator Authentication.
- * Backed by authoritative backend API verification with dual session isolation.
+ * Authentication Service (Hardened)
+ * Strictly verifies User and Administrator sessions with authoritative backend API (/api/auth/me).
+ * Prevents client-side role tampering, XSS session impersonation, and unverified local admin promotion.
  */
 
 import { supabase, isSupabaseConfigured } from '../utils/supabaseClient';
@@ -9,6 +9,27 @@ import { supabase, isSupabaseConfigured } from '../utils/supabaseClient';
 const USER_SESSION_KEY = 'assetbridge_user_session';
 const ADMIN_SESSION_KEY = 'assetbridge_admin_session';
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+/**
+ * Validates a Bearer token with the backend.
+ * The backend verifies the cryptographic JWT signature with Supabase
+ * and derives identity & role strictly from server-controlled app_metadata.
+ */
+async function verifyTokenWithServer(token) {
+  if (!token || typeof token !== 'string') return null;
+  try {
+    const res = await fetch(`${API_BASE}/auth/me`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!res.ok) return null;
+    const json = await res.json().catch(() => ({}));
+    return json?.data?.user || null;
+  } catch {
+    return null;
+  }
+}
 
 export const authService = {
   isConfigured() {
@@ -23,7 +44,7 @@ export const authService = {
       const res = await fetch(`${API_BASE}/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, fullName }),
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password, fullName: fullName.trim() }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -41,19 +62,19 @@ export const authService = {
       localStorage.setItem(USER_SESSION_KEY, JSON.stringify(session));
       return { user: data.data.user, session, provider: 'backend_authoritative' };
     } catch (err) {
-      throw new Error(`Account creation failed. No local account was created. ${err.message}`, { cause: err });
+      throw new Error(`Account creation failed. ${err.message}`, { cause: err });
     }
   },
 
   /**
-   * User Sign-In (Restricted to USER role flow)
+   * User Sign-In (Normal User flow)
    */
   async signIn(email, password) {
     try {
       const res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -77,21 +98,20 @@ export const authService = {
       if (err.message && !err.message.includes('fetch')) {
         throw err;
       }
-
-      throw new Error(`Sign-in failed. Local demo authentication is disabled. ${err.message}`, { cause: err });
+      throw new Error(`Sign-in failed. ${err.message}`, { cause: err });
     }
   },
 
   /**
    * Dedicated Administrator Sign-In
    * Calls /api/auth/admin-login.
-   * Authoritatively rejects non-admin accounts.
+   * Authoritatively verifies that the account possesses the ADMIN role in Supabase app_metadata.
    */
   async signInAdmin(email, password) {
     const res = await fetch(`${API_BASE}/auth/admin-login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
     });
 
     const data = await res.json();
@@ -103,7 +123,7 @@ export const authService = {
 
     const adminUser = data.data.user;
     if (adminUser.role !== 'ADMIN') {
-      throw new Error('Access Denied: This account does not have administrator privileges.');
+      throw new Error('Access Denied: This account does not possess administrator privileges.');
     }
 
     const adminSession = {
@@ -118,36 +138,58 @@ export const authService = {
 
   /**
    * Get Current Normal User
+   * Authoritatively verifies the stored token against /auth/me before trusting identity.
    */
   async getCurrentUser() {
     const stored = localStorage.getItem(USER_SESSION_KEY);
-    if (stored) {
-      try {
-        const session = JSON.parse(stored);
-        return session.user;
-      } catch {
+    if (!stored) return null;
+    try {
+      const session = JSON.parse(stored);
+      if (!session?.token) {
+        localStorage.removeItem(USER_SESSION_KEY);
         return null;
       }
+      const verifiedUser = await verifyTokenWithServer(session.token);
+      if (!verifiedUser) {
+        localStorage.removeItem(USER_SESSION_KEY);
+        return null;
+      }
+      // Update session with verified server details
+      session.user = verifiedUser;
+      localStorage.setItem(USER_SESSION_KEY, JSON.stringify(session));
+      return verifiedUser;
+    } catch {
+      localStorage.removeItem(USER_SESSION_KEY);
+      return null;
     }
-    return null;
   },
 
   /**
    * Get Current Administrator
+   * Authoritatively verifies the stored token against /auth/me.
+   * Requires verified user.role === 'ADMIN'. Never trusts client-stored JSON roles.
    */
   async getCurrentAdmin() {
     const stored = localStorage.getItem(ADMIN_SESSION_KEY);
-    if (stored) {
-      try {
-        const session = JSON.parse(stored);
-        if (session.user && session.user.role === 'ADMIN') {
-          return session.user;
-        }
-      } catch {
+    if (!stored) return null;
+    try {
+      const session = JSON.parse(stored);
+      if (!session?.token) {
+        localStorage.removeItem(ADMIN_SESSION_KEY);
         return null;
       }
+      const verifiedUser = await verifyTokenWithServer(session.token);
+      if (!verifiedUser || verifiedUser.role !== 'ADMIN') {
+        localStorage.removeItem(ADMIN_SESSION_KEY);
+        return null;
+      }
+      session.user = verifiedUser;
+      localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session));
+      return verifiedUser;
+    } catch {
+      localStorage.removeItem(ADMIN_SESSION_KEY);
+      return null;
     }
-    return null;
   },
 
   saveAdminSession(user, token = null) {
@@ -193,15 +235,47 @@ export const authService = {
     localStorage.removeItem(ADMIN_SESSION_KEY);
   },
 
+  /**
+   * Safe sign out:
+   * 1. Invokes /auth/logout on backend to revoke session server-side.
+   * 2. Safely clears local credentials.
+   * 3. Honestly reports revocation status.
+   */
   async signOut() {
-    this.signOutUser();
-    if (isSupabaseConfigured() && supabase) {
-      try {
-        await supabase.auth.signOut();
-      } catch {
-        // continue
+    let serverRevocationConfirmed = false;
+    const token = this.getUserToken() || this.getAdminToken();
+
+    try {
+      if (token) {
+        const res = await fetch(`${API_BASE}/auth/logout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (res.ok) {
+          const json = await res.json().catch(() => ({}));
+          serverRevocationConfirmed = Boolean(json?.data?.serverRevoked);
+        }
       }
+      if (isSupabaseConfigured() && supabase) {
+        await supabase.auth.signOut().catch(() => {});
+      }
+    } catch {
+      serverRevocationConfirmed = false;
+    } finally {
+      this.signOutUser();
+      this.signOutAdmin();
     }
+
+    return {
+      success: true,
+      serverRevocationConfirmed,
+      warning: serverRevocationConfirmed
+        ? null
+        : 'Could not confirm server-side token revocation over the network. Local credentials were removed; please sign in again.',
+    };
   },
 
   onAuthStateChange(callback) {
@@ -211,3 +285,4 @@ export const authService = {
     return { data: { subscription: { unsubscribe: () => {} } } };
   },
 };
+export default authService;

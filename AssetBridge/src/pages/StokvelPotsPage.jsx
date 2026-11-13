@@ -1,689 +1,1035 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users,
   CheckCircle2,
   Circle,
   Plus,
-  Sparkles,
   ArrowRight,
-  ExternalLink,
   ShieldCheck,
-  DollarSign,
-  HelpCircle,
-  Layers,
-  Info,
   AlertCircle,
   Loader2,
   QrCode,
   Share2,
   Copy,
   Check,
-  Vote,
-  X
+  X,
+  FileText,
+  Clock,
+  History,
+  AlertTriangle,
+  Globe,
+  Lock,
+  Calendar,
+  DollarSign,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import ProgressRing from '../components/ProgressRing';
-import PayoutCelebrationModal from '../components/PayoutCelebrationModal';
 import { potsService } from '../services/potsService';
 
+const SEPOLIA_USDT_CONTRACT = '0x7169D38820dfd117C3FA1f22a697dBA58d90BA06';
+const SEPOLIA_CHAIN_ID = 11155111;
+
 export default function StokvelPotsPage({ user }) {
-  const storageUserId = user?.email || user?.id || 'demo';
-  const [pots, setPots] = useState(() => potsService.getPots(storageUserId));
-  const [activePotId, setActivePotId] = useState('friends-stokvel');
+  const [activeTab, setActiveTab] = useState('my'); // 'my' | 'discover'
+  const [myPots, setMyPots] = useState([]);
+  const [discoverablePots, setDiscoverablePots] = useState([]);
+  const [activePotId, setActivePotId] = useState(null);
+  const [activePotDetails, setActivePotDetails] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [feedbackError, setFeedbackError] = useState('');
+  const [feedbackSuccess, setFeedbackSuccess] = useState('');
+
+  // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showJoinModal, setShowJoinModal] = useState(false);
-  const [showQrModal, setShowQrModal] = useState(false);
-  const [inviteCodeInput, setInviteCodeInput] = useState('');
-  const [payoutCelebration, setPayoutCelebration] = useState(null);
-  const [isContributing, setIsContributing] = useState(false);
-  const [contributeError, setContributeError] = useState('');
-  const [contributeSuccess, setContributeSuccess] = useState('');
-  const [copyCodeSuccess, setCopyCodeSuccess] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [generatedInvite, setGeneratedInvite] = useState(null);
+  const [copiedToken, setCopiedToken] = useState(false);
 
-  const [newPotForm, setNewPotForm] = useState({
+  const [showJoinByTokenModal, setShowJoinByTokenModal] = useState(false);
+  const [inviteTokenInput, setInviteTokenInput] = useState('');
+  const [previewData, setPreviewData] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const [showApplyModal, setShowApplyModal] = useState(false);
+  const [targetApplyPot, setTargetApplyPot] = useState(null);
+  const [applyNote, setApplyNote] = useState('');
+
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showAuditModal, setShowAuditModal] = useState(false);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [showDisputeModal, setShowDisputeModal] = useState(false);
+  const [disputeReason, setDisputeReason] = useState('');
+
+  // New Stokvel Form
+  const [createForm, setCreateForm] = useState({
     name: '',
-    mode: 'rotation',
-    contributionAmount: 20,
-    targetAsset: 'tAAPL',
+    description: '',
+    contributionAmount: 50,
+    maxMembers: 5,
+    frequency: 'monthly',
+    discoverability: 'discoverable_open',
+    deadlineDays: 3,
+    graceDays: 2,
+    timezone: 'Africa/Johannesburg',
   });
+  const [isCreating, setIsCreating] = useState(false);
 
-  // Fetch updated pots on mount
-  useEffect(() => {
-    potsService.fetchPotsFromBackend(storageUserId).then((backendPots) => {
-      if (backendPots && backendPots.length > 0) {
-        setPots(backendPots);
-      }
-    });
-  }, [storageUserId]);
-
-  const activePot = pots.find((p) => p.id === activePotId) || pots[0] || {
-    id: 'default',
-    name: 'Community Pot',
-    mode: 'rotation',
-    contributionAmount: 20,
-    totalPotSize: 100,
-    totalRounds: 5,
-    currentRound: 1,
-    members: [],
-    history: [],
-    inviteCode: 'POT-STOK-1001',
-  };
-
-  const paidCount = activePot.members.filter((m) => m.paid).length;
-  const progressPercent = activePot.members.length > 0 ? Math.round((paidCount / activePot.members.length) * 100) : 0;
-  const isRotation = activePot.mode === 'rotation';
-
-  const currentUserName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'You';
-  const userMember = activePot.members.find(
-    (m) => (m.userId && m.userId.toLowerCase() === storageUserId.toLowerCase()) || m.isUserSlot || m.id === '5' || m.id === 'm5'
-  );
-  const hasUserContributed = Boolean(userMember?.paid);
-
-  // Handle member contribution connected to Tether wallet
-  const handleContribute = async () => {
-    setContributeError('');
-    setContributeSuccess('');
-    setIsContributing(true);
-
+  const loadData = useCallback(async () => {
     try {
-      const result = await potsService.contributeToPot(activePot.id, user, storageUserId);
-      if (result) {
-        setPots([...result.pots]);
-        setContributeSuccess(`Successfully contributed $${activePot.contributionAmount} USDT to ${activePot.name}.`);
-        if (result.payoutEvent) {
-          setPayoutCelebration(result.payoutEvent);
-        }
+      setLoading(true);
+      const [mine, discoverable] = await Promise.all([
+        potsService.getMyStokvels().catch(() => []),
+        potsService.getDiscoverableStokvels().catch(() => []),
+      ]);
+      setMyPots(mine);
+      setDiscoverablePots(discoverable);
+
+      const targetId = activePotId || (mine.length > 0 ? mine[0].id : null);
+      if (targetId) {
+        setActivePotId(targetId);
+        const details = await potsService.getStokvelDetails(targetId).catch(() => null);
+        setActivePotDetails(details);
+      } else {
+        setActivePotDetails(null);
       }
-    } catch (err) {
-      setContributeError(err.message || 'Failed to submit contribution.');
     } finally {
-      setIsContributing(false);
+      setLoading(false);
     }
-  };
+  }, [activePotId]);
 
-  // Join pot with code
-  const handleJoinSubmit = async (e) => {
-    e.preventDefault();
-    setContributeError('');
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleSelectPot = async (id) => {
+    setActivePotId(id);
+    setFeedbackError('');
+    setFeedbackSuccess('');
     try {
-      const result = await potsService.joinPot(inviteCodeInput.trim(), user, storageUserId);
-      if (result?.pot) {
-        setPots(potsService.getPots(storageUserId));
-        setActivePotId(result.pot.id);
-        setShowJoinModal(false);
-        setInviteCodeInput('');
-        setContributeSuccess(`Joined ${result.pot.name} successfully!`);
-      }
+      const details = await potsService.getStokvelDetails(id);
+      setActivePotDetails(details);
     } catch (err) {
-      setContributeError(err.message || 'Could not join pot.');
+      setFeedbackError(err.message || 'Could not load group details');
     }
   };
 
-  // Vote on investment asset
-  const handleVote = async (approved) => {
-    try {
-      await potsService.voteInvestment(activePot.id, approved, storageUserId);
-      setContributeSuccess(`Recorded vote: ${approved ? 'Approved' : 'Rejected'} asset purchase.`);
-      const updated = await potsService.fetchPotsFromBackend(storageUserId);
-      setPots([...updated]);
-    } catch (err) {
-      setContributeError(err.message || 'Voting failed.');
-    }
-  };
-
-  // Create new pot
-  const handleCreateSubmit = (e) => {
+  // Create Stokvel
+  const handleCreateSubmit = async (e) => {
     e.preventDefault();
-    const created = potsService.createPot(newPotForm, user, storageUserId);
-    setPots(potsService.getPots(storageUserId));
-    setActivePotId(created.id);
-    setShowCreateModal(false);
+    setFeedbackError('');
+    setIsCreating(true);
+    try {
+      const payload = {
+        name: createForm.name.trim(),
+        description: createForm.description.trim(),
+        contributionAmount: Number(createForm.contributionAmount),
+        maxMembers: Number(createForm.maxMembers),
+        frequency: createForm.frequency,
+        discoverability: createForm.discoverability,
+        firstCycleDate: new Date().toISOString(),
+        contributionDeadlineDays: Number(createForm.deadlineDays),
+        gracePeriodDays: Number(createForm.graceDays),
+        timezone: createForm.timezone,
+      };
+
+      const created = await potsService.createStokvel(payload);
+      setFeedbackSuccess(`Rotating stokvel "${created.name}" created successfully under immutable terms.`);
+      setShowCreateModal(false);
+      setActivePotId(created.id);
+      await loadData();
+    } catch (err) {
+      setFeedbackError(err.message || 'Failed to create stokvel');
+    } finally {
+      setIsCreating(false);
+    }
   };
 
-  const inviteShareText = `Join our group savings & investment vault "${activePot.name}" on AssetBridge! Invite Code: ${activePot.inviteCode || 'POT-STOK-1001'}`;
-  const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(inviteShareText)}`;
+  // Generate Invite
+  const handleGenerateInvite = async () => {
+    if (!activePotId) return;
+    try {
+      const res = await potsService.generateInvite(activePotId, { maxUses: 1, expiryHours: 72 });
+      setGeneratedInvite(res);
+      setShowInviteModal(true);
+    } catch (err) {
+      setFeedbackError(err.message || 'Permission denied: only Owner or Co-admin can issue invites.');
+    }
+  };
+
+  // Preview Invite
+  const handlePreviewToken = async (e) => {
+    e.preventDefault();
+    if (!inviteTokenInput.trim()) return;
+    setPreviewLoading(true);
+    setFeedbackError('');
+    try {
+      const preview = await potsService.previewInvite(inviteTokenInput.trim());
+      setPreviewData(preview);
+    } catch (err) {
+      setFeedbackError(err.message || 'Invalid, expired, or revoked invitation token.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // Accept Invite
+  const handleAcceptInvite = async () => {
+    if (!previewData) return;
+    try {
+      await potsService.acceptInvite(inviteTokenInput.trim(), previewData.termsVersion);
+      setFeedbackSuccess(`Successfully accepted terms and joined ${previewData.name}!`);
+      setShowJoinByTokenModal(false);
+      setInviteTokenInput('');
+      setPreviewData(null);
+      await loadData();
+    } catch (err) {
+      setFeedbackError(err.message || 'Failed to complete admission.');
+    }
+  };
+
+  // Apply to Discoverable Group
+  const handleApplyToJoin = async (e) => {
+    e.preventDefault();
+    if (!targetApplyPot) return;
+    try {
+      await potsService.requestToJoin(targetApplyPot.id, applyNote.trim());
+      setFeedbackSuccess(`Join application submitted for ${targetApplyPot.name}. The Owner or Co-admin will review it.`);
+      setShowApplyModal(false);
+      setApplyNote('');
+      await loadData();
+    } catch (err) {
+      setFeedbackError(err.message || 'Could not submit application.');
+    }
+  };
+
+  // Review Application
+  const handleReviewRequest = async (reqId, status) => {
+    if (!activePotId) return;
+    try {
+      await potsService.reviewJoinRequest(activePotId, reqId, status);
+      setFeedbackSuccess(`Applicant was ${status}.`);
+      await loadData();
+    } catch (err) {
+      setFeedbackError(err.message || 'Failed to review request.');
+    }
+  };
+
+  // Accept Approved Terms
+  const handleAcceptApprovedTerms = async (stokvelId, termsVersion) => {
+    try {
+      await potsService.acceptApprovedTerms(stokvelId, termsVersion);
+      setFeedbackSuccess('Terms accepted! You are now an active member.');
+      await loadData();
+    } catch (err) {
+      setFeedbackError(err.message || 'Could not accept terms.');
+    }
+  };
+
+  // Dispute
+  const handleRaiseDispute = async (e) => {
+    e.preventDefault();
+    if (!activePotId || !disputeReason.trim()) return;
+    try {
+      await potsService.raiseDispute(activePotId, { reason: disputeReason.trim() });
+      setFeedbackSuccess('Formal dispute notice recorded and logged on the audit trail.');
+      setShowDisputeModal(false);
+      setDisputeReason('');
+      await loadData();
+    } catch (err) {
+      setFeedbackError(err.message || 'Failed to log dispute.');
+    }
+  };
+
+  // Audit
+  const handleOpenAudit = async () => {
+    if (!activePotId) return;
+    try {
+      const logs = await potsService.getAuditTrail(activePotId);
+      setAuditLogs(logs);
+      setShowAuditModal(true);
+    } catch (err) {
+      setFeedbackError(err.message || 'Audit trail is restricted to enrolled members.');
+    }
+  };
+
+  const isOwnerOrCoAdmin =
+    activePotDetails?.user_role === 'owner' || activePotDetails?.user_role === 'co_admin';
 
   return (
     <div className="space-y-6">
-      {/* Payout Modal */}
-      <PayoutCelebrationModal
-        isOpen={Boolean(payoutCelebration)}
-        onClose={() => setPayoutCelebration(null)}
-        payoutData={payoutCelebration}
-      />
-
-      {/* Top Banner / Concept Explainer */}
-      <div className="bg-gradient-to-r from-gray-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-xl">
+      {/* Top Banner */}
+      <div className="bg-gradient-to-r from-gray-900 via-slate-900 to-indigo-950 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 relative z-10">
           <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-xs font-semibold text-emerald-300 mb-3 border border-white/10">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 text-xs font-semibold text-emerald-400 mb-3 border border-emerald-500/20">
               <ShieldCheck size={14} />
-              <span>Smart Contract Group Wallets · Stokvel, Ajo, Chama, Susu</span>
+              <span>Rotating Payout Stokvel (ROSCA) Only</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-2">
-              Automated Group Savings & Co-Investing
+              Non-Custodial Rotating Stokvels
             </h2>
             <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">
-              Pan-African smart-contract vaults governed on Tether. Group contributions are securely locked in on-chain escrow until the round completes, automatically triggering payouts or tokenized equity investments.
+              Transparent, immutable community savings. Every member contributes an equal amount each cycle; one scheduled recipient receives the pooled funds in rotation. Non-custodial Sepolia USDT testnet governance.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 shrink-0">
             <button
-              onClick={() => setShowJoinModal(true)}
+              onClick={() => {
+                setInviteTokenInput('');
+                setPreviewData(null);
+                setShowJoinByTokenModal(true);
+              }}
               className="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center gap-2 transition border border-white/15"
             >
               <QrCode size={16} />
-              <span>Join with Code</span>
+              <span>Join via Invite</span>
             </button>
             <button
               onClick={() => setShowCreateModal(true)}
               className="px-5 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-gray-950 font-bold text-xs flex items-center gap-2 transition shadow-lg active:scale-95"
             >
               <Plus size={16} />
-              <span>Create New Pot</span>
+              <span>Create Rotating Stokvel</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Pot Selector Tabs */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2.5">
-          {pots.map((pot) => (
-            <button
-              key={pot.id}
-              onClick={() => {
-                setActivePotId(pot.id);
-                setContributeError('');
-                setContributeSuccess('');
-              }}
-              className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition flex items-center gap-2.5 shadow-sm border ${
-                activePotId === pot.id
-                  ? 'bg-gray-900 text-white border-gray-900'
-                  : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-              }`}
-            >
-              <span>{pot.name}</span>
-              <span
-                className={`text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                  pot.mode === 'rotation'
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-indigo-100 text-indigo-800'
-                }`}
-              >
-                {pot.mode === 'rotation' ? 'Rotation' : 'Investment Club'}
-              </span>
-            </button>
-          ))}
+      {/* Disabled Future Types Disclaimer */}
+      <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
+        <AlertTriangle size={16} className="text-amber-500 shrink-0" />
+        <div>
+          <span className="font-semibold text-slate-800">Supported Scope: </span>
+          Only Rotating Payout Stokvels (ROSCA) are operational. Investment, lending, grocery, and burial stokvel types are disabled until audited smart-contract vaults are reviewed and approved.
         </div>
+      </div>
 
-        <button
-          onClick={() => setShowQrModal(true)}
-          className="inline-flex items-center gap-2 rounded-xl bg-white border border-slate-200 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm"
-        >
-          <Share2 size={14} className="text-teal-600" />
-          <span>Pot QR & WhatsApp Invite</span>
-        </button>
+      {/* Main Tabs: My Stokvels vs Discover */}
+      <div className="flex items-center justify-between border-b border-gray-200 pb-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setActiveTab('my')}
+            className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition flex items-center gap-2 ${
+              activeTab === 'my'
+                ? 'bg-gray-900 text-white shadow-sm'
+                : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+            }`}
+          >
+            <Users size={15} />
+            <span>My Stokvels ({myPots.length})</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('discover')}
+            className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition flex items-center gap-2 ${
+              activeTab === 'discover'
+                ? 'bg-gray-900 text-white shadow-sm'
+                : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+            }`}
+          >
+            <Globe size={15} />
+            <span>Discover Open Groups ({discoverablePots.length})</span>
+          </button>
+        </div>
       </div>
 
       {/* Feedback Alerts */}
-      {contributeError && (
-        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-center gap-2 animate-fade-in">
-          <AlertCircle size={16} className="text-rose-600 shrink-0" />
-          <span>{contributeError}</span>
+      {feedbackError && (
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={16} className="text-rose-600 shrink-0" />
+            <span>{feedbackError}</span>
+          </div>
+          <button onClick={() => setFeedbackError('')}><X size={14} /></button>
         </div>
       )}
-      {contributeSuccess && (
-        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-center gap-2 animate-fade-in">
-          <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-          <span>{contributeSuccess}</span>
+      {feedbackSuccess && (
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+            <span>{feedbackSuccess}</span>
+          </div>
+          <button onClick={() => setFeedbackSuccess('')}><X size={14} /></button>
         </div>
       )}
 
-      {/* Active Pot Interactive Console */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* Left Column: Progress Ring & Pot Overview */}
-        <div className="lg:col-span-5 bg-white rounded-3xl p-6 sm:p-7 border border-gray-100 shadow-sm flex flex-col justify-between">
-          <div>
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-gray-400">
-                  {isRotation ? 'Rotation Mode (Stokvel)' : 'Investment Club Mode'}
-                </span>
-                <h3 className="text-2xl font-black text-gray-900 mt-0.5">
-                  {activePot.name}
-                </h3>
-              </div>
-              <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-gray-100 text-gray-700">
-                Round {activePot.currentRound} of {activePot.totalRounds}
-              </span>
-            </div>
-
-            {/* Circular Progress & Status Callout */}
-            <div className="my-6 flex flex-col sm:flex-row items-center gap-6 p-5 rounded-2xl bg-gray-50 border border-gray-100">
-              <ProgressRing
-                radius={54}
-                stroke={9}
-                progress={progressPercent}
-                label={`${paidCount} of ${activePot.members.length}`}
-                sublabel="members paid"
-              />
-
-              <div className="text-center sm:text-left space-y-1">
-                <div className="text-xs text-gray-500 font-medium">Escrow Vault Balance:</div>
-                <div className="text-2xl font-black text-gray-900">
-                  ${activePot.contributionAmount * paidCount} / ${activePot.totalPotSize || activePot.totalPot} USDT
-                </div>
-                <div className="text-xs text-emerald-600 font-semibold flex items-center gap-1 justify-center sm:justify-start">
-                  <CheckCircle2 size={13} />
-                  <span>
-                    {progressPercent === 100
-                      ? 'Round pool fully funded · Payout disbursed'
-                      : `Awaiting ${activePot.members.length - paidCount} contribution(s)`}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Mode-specific detail card */}
-            <div className="p-4 rounded-2xl border border-gray-200 space-y-2 text-xs">
-              <div className="flex justify-between text-gray-600">
-                <span>Contribution per member:</span>
-                <span className="font-bold text-gray-900">${activePot.contributionAmount} USDT / month</span>
-              </div>
-
-              {isRotation ? (
-                <div className="flex justify-between text-gray-600">
-                  <span>Round {activePot.currentRound} Beneficiary:</span>
-                  <span className="font-bold text-indigo-600">
-                    {activePot.members.find((m) => m.payoutOrder === activePot.currentRound)?.name || 'Next Member'}
-                  </span>
-                </div>
-              ) : (
-                <div className="flex justify-between text-gray-600">
-                  <span>Target Investment Asset:</span>
-                  <span className="font-bold text-indigo-600">{activePot.targetAsset} (Apple Inc. Token)</span>
-                </div>
-              )}
-
-              <div className="flex justify-between text-gray-600 pt-1 border-t border-gray-100">
-                <span>Governance Protocol:</span>
-                <span className="text-gray-900 font-medium">Automated Tether Smart Escrow</span>
-              </div>
-
-              {/* Investment approval voting */}
-              {!isRotation && (
-                <div className="pt-2 border-t border-gray-100">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-gray-700">Member Investment Approval:</span>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleVote(true)}
-                        className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold text-[11px] border border-emerald-200"
-                      >
-                        Approve
-                      </button>
-                      <button
-                        onClick={() => handleVote(false)}
-                        className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold text-[11px] border border-rose-200"
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
+      {loading ? (
+        <div className="p-12 text-center text-gray-500 flex flex-col items-center justify-center gap-2">
+          <Loader2 className="animate-spin text-gray-400" size={24} />
+          <span className="text-xs font-semibold">Loading Stokvels…</span>
+        </div>
+      ) : activeTab === 'discover' ? (
+        /* DISCOVERABLE GROUPS VIEW */
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 className="text-base font-bold text-gray-900">Open Community Directories</h3>
+              <p className="text-xs text-gray-500">Apply to join an open group. Once approved by the Owner or Co-admin, you must explicitly accept terms to be enrolled.</p>
             </div>
           </div>
 
-          {/* Action Button: Contribute USDT */}
-          <div className="mt-6 pt-4 border-t border-gray-100">
-            {hasUserContributed ? (
-              <div className="w-full py-3.5 px-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-xl text-center flex items-center justify-center gap-2">
-                <CheckCircle2 size={16} className="text-emerald-600" />
-                <span>You contributed ${activePot.contributionAmount} USDT for this round</span>
-              </div>
-            ) : (
-              <button
-                onClick={handleContribute}
-                disabled={isContributing}
-                className="w-full py-3.5 px-4 bg-[#141518] hover:bg-black text-white text-sm font-bold rounded-xl shadow-lg transition active:scale-[0.99] flex items-center justify-center gap-2 disabled:opacity-60"
-              >
-                {isContributing ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    <span>Signing On-Chain Escrow...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Contribute ${activePot.contributionAmount} USDT</span>
-                    <ArrowRight size={16} />
-                  </>
-                )}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Right Column: Member List & Payout Order */}
-        <div className="lg:col-span-7 space-y-6">
-          {/* Member List Card */}
-          <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h4 className="text-base font-bold text-gray-900">
-                  Pot Members & Payout Schedule
-                </h4>
-                <p className="text-xs text-gray-500">
-                  Cryptographically verified payout order agreed in advance by all members.
-                </p>
-              </div>
-              <span className="text-xs font-semibold text-gray-400">
-                {activePot.members.length} Members
-              </span>
+          {discoverablePots.length === 0 ? (
+            <div className="bg-white rounded-3xl p-12 text-center border border-gray-100 shadow-sm">
+              <Globe size={36} className="mx-auto text-gray-400 mb-3" />
+              <h4 className="text-sm font-bold text-gray-800">No Open Groups Listed</h4>
+              <p className="text-xs text-gray-500 max-w-sm mx-auto mt-1">
+                There are currently no discoverable stokvels accepting applications. Create one or ask an organizer for a direct invitation link.
+              </p>
             </div>
-
-            <div className="divide-y divide-gray-100">
-              {activePot.members.map((member) => {
-                const isCurrentBeneficiary = isRotation && member.payoutOrder === activePot.currentRound;
-                const isSelf = member.isUserSlot || member.isUser || member.id === '5' || member.id === 'm5' || member.userId === storageUserId;
-                const displayName = isSelf ? `${currentUserName} (You)` : member.name;
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {discoverablePots.map((pot) => {
+                const expectedPool = Math.round(pot.max_members * Number(pot.contribution_amount) * 100) / 100;
+                const isFull = pot.join_status === 'closed';
 
                 return (
-                  <div
-                    key={member.id}
-                    className={`py-3.5 px-3 rounded-2xl flex items-center justify-between transition ${
-                      isCurrentBeneficiary ? 'bg-indigo-50/60' : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-lg border border-gray-200">
-                        {member.avatar}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-gray-900">
-                            {displayName}
-                          </span>
-                          {isCurrentBeneficiary && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-600 text-white uppercase tracking-wider">
-                              Receives ${activePot.totalPotSize || activePot.totalPot} USDT
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-xs text-gray-400 font-medium">
-                          Payout Turn: Round #{member.payoutOrder}
+                  <div key={pot.id} className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <h4 className="font-bold text-gray-900 text-sm">{pot.name}</h4>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                            isFull ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
+                          }`}
+                        >
+                          {isFull ? 'Capacity Reached' : 'Open'}
                         </span>
+                      </div>
+                      <p className="text-xs text-gray-600 line-clamp-2 mb-4">
+                        {pot.description || 'Rotating Payout Stokvel (ROSCA)'}
+                      </p>
+
+                      <div className="grid grid-cols-2 gap-2 bg-gray-50 rounded-xl p-3 mb-4 text-xs">
+                        <div>
+                          <span className="text-[10px] text-gray-500 block">Contribution</span>
+                          <span className="font-bold text-gray-900">${pot.contribution_amount} USDT</span>
+                          <span className="text-[10px] text-gray-400 block">{pot.frequency}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-gray-500 block">Expected Pool (N×C)</span>
+                          <span className="font-bold text-emerald-600">${expectedPool.toFixed(2)} USDT</span>
+                          <span className="text-[10px] text-gray-400 block">{pot.max_members} members</span>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                      {member.paid ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
-                          <CheckCircle2 size={14} />
-                          <span>Paid ${activePot.contributionAmount}</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-100">
-                          <Circle size={14} />
-                          <span>Pending</span>
-                        </span>
-                      )}
-                    </div>
+                    <button
+                      disabled={isFull}
+                      onClick={() => {
+                        setTargetApplyPot(pot);
+                        setShowApplyModal(true);
+                      }}
+                      className={`w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition ${
+                        isFull
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : 'bg-gray-900 hover:bg-gray-800 text-white shadow-sm'
+                      }`}
+                    >
+                      <span>{isFull ? 'Group Closed' : 'Apply to Join Group'}</span>
+                      <ArrowRight size={13} />
+                    </button>
                   </div>
                 );
               })}
             </div>
-          </div>
-
-          {/* Pot Payout History */}
-          <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h4 className="text-base font-bold text-gray-900">
-                On-Chain Round History
-              </h4>
-              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                <ShieldCheck size={13} />
-                <span>Audited Escrow</span>
-              </span>
-            </div>
-
-            {(activePot.history || activePot.payoutHistory || []).length === 0 ? (
-              <p className="text-xs text-gray-400">No rounds completed yet.</p>
-            ) : (
-              <div className="space-y-2">
-                {(activePot.history || activePot.payoutHistory || []).map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-between text-xs"
-                  >
-                    <div>
-                      <span className="font-bold text-gray-900">{item.event || item.beneficiary}</span>
-                      <span className="text-gray-400 ml-2">({item.date})</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="font-bold text-emerald-600">{item.amount ? `$${item.amount} USDT` : ''}</span>
-                      {item.txHash || item.tx ? (
-                        <a
-                          href={`https://sepolia.etherscan.io/tx/${item.txHash || item.tx}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-mono text-indigo-600 flex items-center gap-1 hover:underline"
-                        >
-                          {(item.txHash || item.tx).slice(0, 8)}...{(item.txHash || item.tx).slice(-6)}
-                          <ExternalLink size={12} />
-                        </a>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          )}
         </div>
-      </div>
-
-      {/* Share Pot QR / Invite Code Modal */}
-      {showQrModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl border border-gray-100 text-center relative">
-            <button
-              onClick={() => setShowQrModal(false)}
-              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 rounded-full"
-            >
-              <X size={18} />
-            </button>
-            <h3 className="text-lg font-bold text-gray-900 mb-1">Invite Members</h3>
-            <p className="text-xs text-gray-500 mb-4">{activePot.name}</p>
-
-            <div className="p-4 bg-white rounded-2xl border-2 border-slate-100 inline-block shadow-sm">
-              <QRCodeSVG
-                value={`assetbridge:stokvel:${activePot.inviteCode || activePot.id}`}
-                size={170}
-                level="H"
-                includeMargin={true}
-              />
-            </div>
-
-            <div className="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Invite Code</span>
-              <div className="flex items-center justify-center gap-2 font-mono font-bold text-slate-900 text-sm">
-                <span>{activePot.inviteCode || 'STOK-FRND-8821'}</span>
+      ) : (
+        /* MY STOKVELS VIEW */
+        <div className="space-y-6">
+          {myPots.length === 0 ? (
+            <div className="bg-white rounded-3xl p-12 text-center border border-gray-100 shadow-sm">
+              <Users size={36} className="mx-auto text-gray-400 mb-3" />
+              <h4 className="text-sm font-bold text-gray-800">You Are Not in Any Stokvels</h4>
+              <p className="text-xs text-gray-500 max-w-sm mx-auto mt-1 mb-4">
+                You have not created or joined any rotating groups yet.
+              </p>
+              <div className="flex items-center justify-center gap-3">
                 <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(activePot.inviteCode || 'STOK-FRND-8821');
-                    setCopyCodeSuccess(true);
-                    setTimeout(() => setCopyCodeSuccess(false), 2000);
-                  }}
-                  className="text-slate-400 hover:text-slate-800"
+                  onClick={() => setShowCreateModal(true)}
+                  className="px-4 py-2.5 rounded-xl bg-gray-900 text-white font-bold text-xs hover:bg-gray-800 transition"
                 >
-                  {copyCodeSuccess ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                  Create Rotating Stokvel
+                </button>
+                <button
+                  onClick={() => setActiveTab('discover')}
+                  className="px-4 py-2.5 rounded-xl bg-gray-100 text-gray-700 font-bold text-xs hover:bg-gray-200 transition"
+                >
+                  Browse Open Groups
                 </button>
               </div>
             </div>
+          ) : (
+            <>
+              {/* Group Tabs */}
+              <div className="flex flex-wrap items-center gap-2">
+                {myPots.map((pot) => (
+                  <button
+                    key={pot.id}
+                    onClick={() => handleSelectPot(pot.id)}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                      activePotId === pot.id
+                        ? 'bg-gray-900 text-white shadow-sm'
+                        : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+                    }`}
+                  >
+                    <span>{pot.name}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/20 uppercase">
+                      {pot.lifecycle_status}
+                    </span>
+                  </button>
+                ))}
+              </div>
 
-            <div className="mt-4 flex gap-2">
-              <a
-                href={whatsappUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow transition"
-              >
-                <Share2 size={14} />
-                <span>Share via WhatsApp</span>
-              </a>
-            </div>
-          </div>
+              {activePotDetails && (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Left Column: Details & Overview */}
+                  <div className="lg:col-span-5 bg-white rounded-3xl p-6 border border-gray-100 shadow-sm space-y-5">
+                    <div>
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div>
+                          <h3 className="text-xl font-extrabold text-gray-900">{activePotDetails.name}</h3>
+                          <p className="text-xs text-gray-500">Rotating ROSCA · Terms v{activePotDetails.terms_version}</p>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-700">
+                            Role: {activePotDetails.user_role || 'member'}
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800">
+                            {activePotDetails.lifecycle_status}
+                          </span>
+                        </div>
+                      </div>
+
+                      {activePotDetails.description && (
+                        <p className="text-xs text-gray-600 mt-2">{activePotDetails.description}</p>
+                      )}
+                    </div>
+
+                    {/* Pending Approved Reservation Banner */}
+                    {activePotDetails.my_request?.status === 'approved' && (
+                      <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+                        <div className="flex items-center gap-2 font-bold mb-1">
+                          <Clock size={15} className="text-amber-600" />
+                          <span>Seat Reserved! Action Required</span>
+                        </div>
+                        <p className="text-[11px] text-amber-700 mb-3">
+                          Your application was approved by the group administration. A seat has been reserved for 48 hours. Review and accept the immutable terms to complete your enrollment.
+                        </p>
+                        <button
+                          onClick={() => handleAcceptApprovedTerms(activePotDetails.id, activePotDetails.terms_version)}
+                          className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition"
+                        >
+                          Accept Immutable Terms & Enter
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Stats Grid */}
+                    <div className="grid grid-cols-3 gap-2 bg-gray-50 rounded-2xl p-4 text-center">
+                      <div>
+                        <span className="text-[10px] text-gray-500 font-medium block">Contribution</span>
+                        <span className="text-base font-extrabold text-gray-900">${activePotDetails.contribution_amount}</span>
+                        <span className="text-[10px] text-gray-400 block">USDT / {activePotDetails.frequency}</span>
+                      </div>
+                      <div className="border-x border-gray-200">
+                        <span className="text-[10px] text-gray-500 font-medium block">Expected Pool</span>
+                        <span className="text-base font-extrabold text-emerald-600">
+                          ${Math.round(activePotDetails.max_members * Number(activePotDetails.contribution_amount) * 100) / 100}
+                        </span>
+                        <span className="text-[10px] text-gray-400 block">N×C USDT</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-gray-500 font-medium block">Active Members</span>
+                        <span className="text-base font-extrabold text-gray-900">
+                          {(activePotDetails.members || []).length}/{activePotDetails.max_members}
+                        </span>
+                        <span className="text-[10px] text-gray-400 block">{activePotDetails.join_status === 'closed' ? 'Closed' : 'Open'}</span>
+                      </div>
+                    </div>
+
+                    {/* Non-Custodial Safety Callout */}
+                    <div className="p-3.5 rounded-xl bg-sky-50 border border-sky-200 text-sky-900 text-xs flex items-start gap-2.5">
+                      <ShieldCheck size={16} className="text-sky-600 shrink-0 mt-0.5" />
+                      <div className="text-[11px] leading-relaxed">
+                        <span className="font-semibold text-sky-950">Testnet Non-Custodial Safety: </span>
+                        Financial contribution and payout writes remain disabled until real WDK signing and on-chain verification are integrated. No mock tx hashes or fake balances are recorded.
+                      </div>
+                    </div>
+
+                    {/* Quick Group Actions */}
+                    <div className="flex flex-wrap items-center gap-2 pt-2">
+                      {isOwnerOrCoAdmin && (
+                        <button
+                          onClick={handleGenerateInvite}
+                          className="px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold flex items-center gap-1.5 transition"
+                        >
+                          <Share2 size={13} />
+                          <span>Invite Link</span>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setShowTermsModal(true)}
+                        className="px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold flex items-center gap-1.5 transition"
+                      >
+                        <FileText size={13} />
+                        <span>Constitution</span>
+                      </button>
+                      <button
+                        onClick={handleOpenAudit}
+                        className="px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold flex items-center gap-1.5 transition"
+                      >
+                        <History size={13} />
+                        <span>Audit Trail</span>
+                      </button>
+                      <button
+                        onClick={() => setShowDisputeModal(true)}
+                        className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold flex items-center gap-1.5 transition"
+                      >
+                        <AlertCircle size={13} />
+                        <span>File Dispute</span>
+                      </button>
+                    </div>
+
+                    {/* Token Allowlist Info */}
+                    <div className="text-[11px] text-gray-500 border-t border-gray-100 pt-3">
+                      <span className="font-semibold text-gray-700">Token Allowlist: </span>
+                      Provisional Sepolia USDT (<code className="text-gray-800">{SEPOLIA_USDT_CONTRACT.slice(0, 10)}...{SEPOLIA_USDT_CONTRACT.slice(-6)}</code>, Chain {SEPOLIA_CHAIN_ID})
+                    </div>
+                  </div>
+
+                  {/* Right Column: Schedule, Rotation Roster & Admin Inbox */}
+                  <div className="lg:col-span-7 space-y-6">
+                    {/* Admin Review Inbox */}
+                    {isOwnerOrCoAdmin && (activePotDetails.join_requests || []).filter((r) => r.status === 'pending').length > 0 && (
+                      <div className="bg-white rounded-3xl p-5 border border-amber-200 shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-xs font-extrabold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                            <Clock size={14} className="text-amber-600" />
+                            <span>Pending Join Applications ({activePotDetails.join_requests.filter((r) => r.status === 'pending').length})</span>
+                          </h4>
+                        </div>
+                        <div className="space-y-2">
+                          {(activePotDetails.join_requests || [])
+                            .filter((r) => r.status === 'pending')
+                            .map((req) => (
+                              <div key={req.id} className="p-3 bg-amber-50/50 rounded-xl border border-amber-100 flex items-center justify-between gap-3 text-xs">
+                                <div>
+                                  <div className="font-bold text-gray-900">Applicant: {req.user_id.slice(0, 8)}...</div>
+                                  <div className="text-gray-500 text-[11px]">{req.note || 'No note provided'}</div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => handleReviewRequest(req.id, 'approved')}
+                                    className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs"
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    onClick={() => handleReviewRequest(req.id, 'declined')}
+                                    className="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs"
+                                  >
+                                    Decline
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Schedule & Rotation Roster */}
+                    <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-sm font-extrabold text-gray-900">Rotation Schedule & Payout Order</h4>
+                        <span className="text-xs text-gray-500">1 Round · {activePotDetails.max_members} Cycles</span>
+                      </div>
+                      <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+                        Every member contributes in each cycle, including their own payout cycle. One recipient receives the pooled funds each round in agreed sequence. Short-month calendar cutoffs automatically resolve to month-end.
+                      </p>
+
+                      <div className="divide-y divide-gray-100">
+                        {(activePotDetails.schedule || []).map((slot) => {
+                          const member = (activePotDetails.members || []).find((m) => m.rotation_order === slot.cycleNumber);
+
+                          return (
+                            <div key={slot.cycleNumber} className="py-3 flex items-center justify-between gap-3 text-xs">
+                              <div className="flex items-center gap-3">
+                                <div className="w-7 h-7 rounded-full bg-gray-900 text-white flex items-center justify-center font-bold text-xs">
+                                  #{slot.cycleNumber}
+                                </div>
+                                <div>
+                                  <div className="font-bold text-gray-900">
+                                    {member ? `Member (${member.user_id.slice(0, 8)}...)` : `Unassigned Slot #${slot.cycleNumber}`}
+                                  </div>
+                                  <div className="text-[11px] text-gray-500">
+                                    Due: {slot.cutoffDate?.slice(0, 10)} · Disburse: {slot.payoutDate?.slice(0, 10)}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="text-right">
+                                <div className="font-extrabold text-emerald-600">${slot.expectedPool} USDT</div>
+                                <div className="text-[10px] text-gray-400 uppercase font-semibold">Scheduled</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
-      {/* Join Pot Modal */}
-      {showJoinModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md bg-white rounded-3xl p-7 shadow-2xl border border-gray-100 text-gray-900 relative">
-            <button
-              onClick={() => setShowJoinModal(false)}
-              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 rounded-full"
-            >
-              <X size={18} />
-            </button>
-            <h3 className="text-xl font-bold mb-1">Join an Existing Pot</h3>
-            <p className="text-xs text-gray-500 mb-5">
-              Enter the group invitation code provided by the organizer.
-            </p>
+      {/* MODAL 1: Create Rotating Stokvel */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-extrabold text-gray-900">Create Rotating Stokvel (ROSCA)</h3>
+              <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
 
-            <form onSubmit={handleJoinSubmit} className="space-y-4">
+            <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-800 leading-relaxed">
+              <span className="font-bold">Rotating Payout Only: </span>
+              Fixed roster, equal contributions every cycle, and single scheduled payouts. Investment, lending, and grocery stokvels are disabled.
+            </div>
+
+            <form onSubmit={handleCreateSubmit} className="space-y-4 text-xs">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                  Pot Invitation Code
-                </label>
+                <label className="font-bold text-gray-700 block mb-1">Stokvel Name</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. STOK-FRND-8821"
-                  value={inviteCodeInput}
-                  onChange={(e) => setInviteCodeInput(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm font-mono uppercase focus:ring-2 focus:ring-gray-900 focus:outline-none"
+                  placeholder="e.g. Pretoria Rotating Chama"
+                  value={createForm.name}
+                  onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                 />
               </div>
 
-              <div className="flex items-center gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowJoinModal(false)}
-                  className="w-1/2 py-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 font-semibold text-xs"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="w-1/2 py-2.5 rounded-xl bg-gray-900 hover:bg-black text-white font-semibold text-xs shadow"
-                >
-                  Join Pot
-                </button>
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Description (Optional)</label>
+                <textarea
+                  rows={2}
+                  placeholder="Community purpose or mutual support focus..."
+                  value={createForm.description}
+                  onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
+                  className="w-full px-3.5 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
               </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-gray-700 block mb-1">Contribution (USDT)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.01"
+                    required
+                    value={createForm.contributionAmount}
+                    onChange={(e) => setCreateForm({ ...createForm, contributionAmount: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-gray-700 block mb-1">Member Capacity (N)</label>
+                  <input
+                    type="number"
+                    min="2"
+                    max="50"
+                    required
+                    value={createForm.maxMembers}
+                    onChange={(e) => setCreateForm({ ...createForm, maxMembers: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-gray-700 block mb-1">Frequency</label>
+                  <select
+                    value={createForm.frequency}
+                    onChange={(e) => setCreateForm({ ...createForm, frequency: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+                  >
+                    <option value="monthly">Monthly</option>
+                    <option value="biweekly">Bi-Weekly</option>
+                    <option value="weekly">Weekly</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="font-bold text-gray-700 block mb-1">Discoverability</label>
+                  <select
+                    value={createForm.discoverability}
+                    onChange={(e) => setCreateForm({ ...createForm, discoverability: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+                  >
+                    <option value="discoverable_open">Discoverable (Open Application)</option>
+                    <option value="private_invite_only">Private (Direct Invite Only)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Pool Math Live Display */}
+              <div className="bg-gray-900 text-white rounded-2xl p-4 space-y-1">
+                <div className="flex items-center justify-between text-[11px] text-emerald-400 font-bold uppercase tracking-wider">
+                  <span>Expected Cycle Pool (N × C)</span>
+                  <span>{createForm.maxMembers || 0} members × ${createForm.contributionAmount || 0} USDT</span>
+                </div>
+                <div className="text-2xl font-black text-white">
+                  ${(Number(createForm.maxMembers || 0) * Number(createForm.contributionAmount || 0)).toFixed(2)} USDT
+                </div>
+                <div className="text-[10px] text-gray-400">
+                  Before disclosed network gas fees. Fixed 1 round of {createForm.maxMembers || 0} cycles.
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isCreating}
+                className="w-full py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-gray-950 font-bold text-xs flex items-center justify-center gap-2 transition"
+              >
+                {isCreating ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                <span>Create Rotating Stokvel</span>
+              </button>
             </form>
           </div>
         </div>
       )}
 
-      {/* Create Pot Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md bg-white rounded-3xl p-7 shadow-2xl border border-gray-100 text-gray-900">
-            <h3 className="text-2xl font-bold mb-1">Create a Group Vault Pot</h3>
-            <p className="text-xs text-gray-500 mb-5">
-              Set group rules, contribution amount, and smart-contract payout schedule.
+      {/* MODAL 2: Direct Invite Link & QR */}
+      {showInviteModal && generatedInvite && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-extrabold text-gray-900">Direct Invitation Link</h3>
+              <button onClick={() => setShowInviteModal(false)}><X size={18} /></button>
+            </div>
+            <p className="text-xs text-gray-600">
+              Share this secure, high-entropy invite token. The invitee will preview the terms constitution and must explicitly accept before enrollment.
             </p>
 
-            <form onSubmit={handleCreateSubmit} className="space-y-4 text-xs font-semibold text-gray-700">
-              <div>
-                <label className="block mb-1">Pot Name</label>
+            <div className="flex justify-center p-3 bg-gray-50 rounded-2xl border border-gray-100">
+              <QRCodeSVG value={generatedInvite.token} size={150} />
+            </div>
+
+            <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Invite Token</span>
+              <div className="flex items-center justify-between gap-2">
+                <code className="text-xs text-gray-800 break-all">{generatedInvite.token}</code>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(generatedInvite.token);
+                    setCopiedToken(true);
+                    setTimeout(() => setCopiedToken(false), 2000);
+                  }}
+                  className="p-1.5 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 shrink-0"
+                >
+                  {copiedToken ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                </button>
+              </div>
+              <div className="text-[10px] text-gray-400 mt-2">
+                Expires in 72 hours · Single use · Hashed storage
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowInviteModal(false)}
+              className="w-full py-2.5 rounded-xl bg-gray-900 text-white font-bold text-xs"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: Join via Invite Token */}
+      {showJoinByTokenModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-extrabold text-gray-900">Join via Invitation Token</h3>
+              <button onClick={() => setShowJoinByTokenModal(false)}><X size={18} /></button>
+            </div>
+
+            {!previewData ? (
+              <form onSubmit={handlePreviewToken} className="space-y-4">
+                <p className="text-xs text-gray-600">
+                  Enter the invitation token received from your group organizer to inspect group rules and constitution before deciding to join.
+                </p>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Family Emergency Chama"
-                  value={newPotForm.name}
-                  onChange={(e) => setNewPotForm({ ...newPotForm, name: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-normal focus:ring-2 focus:ring-gray-900 focus:outline-none"
+                  placeholder="Paste 64-character token..."
+                  value={inviteTokenInput}
+                  onChange={(e) => setInviteTokenInput(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-gray-900 font-mono"
                 />
-              </div>
-
-              <div>
-                <label className="block mb-1">Mode</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setNewPotForm({ ...newPotForm, mode: 'rotation' })}
-                    className={`p-3 rounded-xl border text-left transition ${
-                      newPotForm.mode === 'rotation'
-                        ? 'border-gray-900 bg-gray-900 text-white'
-                        : 'border-gray-200 text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="font-bold">Rotation Pot</div>
-                    <div className="text-[10px] opacity-80 mt-0.5">Stokvel, Ajo, Chama</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setNewPotForm({ ...newPotForm, mode: 'investment' })}
-                    className={`p-3 rounded-xl border text-left transition ${
-                      newPotForm.mode === 'investment'
-                        ? 'border-gray-900 bg-gray-900 text-white'
-                        : 'border-gray-200 text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="font-bold">Investment Pot</div>
-                    <div className="text-[10px] opacity-80 mt-0.5">Co-buy tokenised equities</div>
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block mb-1">Contribution Amount (USDT per member)</label>
-                <input
-                  type="number"
-                  min="5"
-                  step="5"
-                  value={newPotForm.contributionAmount}
-                  onChange={(e) => setNewPotForm({ ...newPotForm, contributionAmount: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-normal focus:ring-2 focus:ring-gray-900 focus:outline-none"
-                />
-              </div>
-
-              {newPotForm.mode === 'investment' && (
-                <div>
-                  <label className="block mb-1">Target Tokenised Asset</label>
-                  <select
-                    value={newPotForm.targetAsset}
-                    onChange={(e) => setNewPotForm({ ...newPotForm, targetAsset: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-normal focus:ring-2 focus:ring-gray-900 focus:outline-none"
-                  >
-                    <option value="tAAPL">tAAPL (Apple Inc.)</option>
-                    <option value="tTSLA">tTSLA (Tesla Inc.)</option>
-                    <option value="tNVDA">tNVDA (NVIDIA Corp.)</option>
-                  </select>
-                </div>
-              )}
-
-              <div className="flex items-center gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="w-1/2 py-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 font-semibold"
-                >
-                  Cancel
-                </button>
                 <button
                   type="submit"
-                  className="w-1/2 py-2.5 rounded-xl bg-gray-900 hover:bg-black text-white font-semibold shadow"
+                  disabled={previewLoading}
+                  className="w-full py-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 text-white font-bold text-xs flex items-center justify-center gap-2"
                 >
-                  Deploy Pot
+                  {previewLoading ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}
+                  <span>Preview Group Rules & Terms</span>
                 </button>
+              </form>
+            ) : (
+              <div className="space-y-4">
+                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-gray-900 text-sm">{previewData.name}</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 uppercase">
+                      Terms v{previewData.termsVersion}
+                    </span>
+                  </div>
+                  <div className="text-gray-600">
+                    Contribution: ${previewData.contributionAmount} USDT · Expected Pool: ${previewData.expectedPool} USDT · {previewData.frequency}
+                  </div>
+                  <div className="max-h-48 overflow-y-auto p-3 bg-white rounded-xl border border-gray-200 font-mono text-[11px] text-gray-700 whitespace-pre-wrap">
+                    {previewData.termsMarkdown}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleAcceptInvite}
+                    className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs"
+                  >
+                    Accept Immutable Terms & Join
+                  </button>
+                  <button
+                    onClick={() => setPreviewData(null)}
+                    className="flex-1 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-xs"
+                  >
+                    Decline
+                  </button>
+                </div>
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: Apply to Join Discoverable Group */}
+      {showApplyModal && targetApplyPot && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-extrabold text-gray-900">Apply to Join</h3>
+              <button onClick={() => setShowApplyModal(false)}><X size={18} /></button>
+            </div>
+            <p className="text-xs text-gray-600">
+              Apply to join <span className="font-bold">{targetApplyPot.name}</span>. The Owner or Co-admin will review your application. If approved, a seat will be reserved for 48 hours for your terms acceptance.
+            </p>
+            <form onSubmit={handleApplyToJoin} className="space-y-4">
+              <textarea
+                rows={3}
+                placeholder="Introduce yourself or leave an application note (optional)..."
+                value={applyNote}
+                onChange={(e) => setApplyNote(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+              <button
+                type="submit"
+                className="w-full py-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 text-white font-bold text-xs"
+              >
+                Submit Application
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: Constitution Viewer */}
+      {showTermsModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-extrabold text-gray-900">Immutable Group Constitution</h3>
+              <button onClick={() => setShowTermsModal(false)}><X size={18} /></button>
+            </div>
+            <div className="max-h-80 overflow-y-auto p-4 bg-gray-50 rounded-2xl border border-gray-200 font-mono text-xs text-gray-800 whitespace-pre-wrap">
+              {activePotDetails?.terms_markdown || 'No constitution record available.'}
+            </div>
+            <button
+              onClick={() => setShowTermsModal(false)}
+              className="w-full py-2.5 rounded-xl bg-gray-900 text-white font-bold text-xs"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 6: Audit Trail */}
+      {showAuditModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-extrabold text-gray-900">Immutable Audit Trail</h3>
+              <button onClick={() => setShowAuditModal(false)}><X size={18} /></button>
+            </div>
+            <div className="max-h-72 overflow-y-auto divide-y divide-gray-100 text-xs">
+              {auditLogs.length === 0 ? (
+                <p className="text-gray-500 py-4 text-center">No audit events recorded yet.</p>
+              ) : (
+                auditLogs.map((log) => (
+                  <div key={log.id} className="py-2.5 flex items-center justify-between gap-2">
+                    <div>
+                      <div className="font-bold text-gray-900">{log.action}</div>
+                      <div className="text-[10px] text-gray-400">Actor: {log.actor_user_id || 'System'}</div>
+                    </div>
+                    <div className="text-[10px] text-gray-400">
+                      {log.created_at?.slice(0, 19).replace('T', ' ')}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <button
+              onClick={() => setShowAuditModal(false)}
+              className="w-full py-2.5 rounded-xl bg-gray-900 text-white font-bold text-xs"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 7: File Dispute */}
+      {showDisputeModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-extrabold text-gray-900">File Formal Dispute Notice</h3>
+              <button onClick={() => setShowDisputeModal(false)}><X size={18} /></button>
+            </div>
+            <p className="text-xs text-gray-600">
+              Submit a formal notice if an on-chain contribution status, schedule slot, or payout calculation is disputed. All notices are preserved on the group audit trail.
+            </p>
+            <form onSubmit={handleRaiseDispute} className="space-y-4">
+              <textarea
+                rows={4}
+                required
+                placeholder="Explain the dispute, cycle number, and reason in detail..."
+                value={disputeReason}
+                onChange={(e) => setDisputeReason(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+              <button
+                type="submit"
+                className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs"
+              >
+                Submit Dispute Notice
+              </button>
             </form>
           </div>
         </div>

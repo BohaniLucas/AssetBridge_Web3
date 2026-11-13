@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
+import { isSupabaseConfigured } from './services/supabaseService.js';
 
 import authRoutes from './routes/authRoutes.js';
 import potsRoutes from './routes/potsRoutes.js';
@@ -13,6 +14,8 @@ import adminRoutes from './routes/adminRoutes.js';
 import claimRoutes from './routes/claimRoutes.js';
 import { sanitizeInputs } from './middlewares/validationMiddleware.js';
 
+// supabaseService loads server/.env relative to its own file location.
+// Keep this call for server settings when starting from the server directory.
 dotenv.config();
 
 const app = express();
@@ -91,10 +94,13 @@ const authLimiter = rateLimit({
 });
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/signup', authLimiter);
+app.use('/api/auth/admin-login', authLimiter);
+app.use('/api/auth/refresh', authLimiter);
 
 // Mount modular routes
 app.use('/api/auth', authRoutes);
 app.use('/api/pots', potsRoutes);
+app.use('/api/stokvels', potsRoutes);
 app.use('/api/remittance', remittanceRoutes);
 app.use('/api/market', marketRoutes);
 app.use('/api/wallet', walletRoutes);
@@ -111,7 +117,7 @@ app.get('/api/health', (req, res) => {
       rateLimiting: 'active',
       cors: 'whitelisted',
       payloadProtection: 'active (15kb max)',
-      supabaseConfigured: Boolean(process.env.SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY)),
+      supabaseConfigured: isSupabaseConfigured(),
     },
     timestamp: new Date().toISOString(),
   });
@@ -126,8 +132,20 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`[Security] AssetBridge hardened API running on port ${PORT}`);
-});
+const isTesting = process.env.NODE_ENV === 'test' ||
+  process.argv.includes('--test') ||
+  process.execArgv.includes('--test') ||
+  (Boolean(process.argv[1]) && process.argv[1].includes('test'));
+
+if (!isTesting) {
+  app.listen(PORT, () => {
+    console.log(`[Security] AssetBridge hardened API running on port ${PORT}`);
+    if (isSupabaseConfigured()) {
+      console.log('[Config] Supabase environment variables loaded.');
+    } else {
+      console.warn('[Config] Supabase is not configured. Set a real SUPABASE_URL and SUPABASE_ANON_KEY in server/.env; authentication will remain unavailable.');
+    }
+  });
+}
 
 export default app;

@@ -12,7 +12,8 @@
           "recordAudioAndroid": false,
           "barcodeScannerEnabled": true
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",

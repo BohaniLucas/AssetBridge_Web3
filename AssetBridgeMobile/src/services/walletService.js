@@ -1,4 +1,10 @@
 import { API_BASE_URL } from '../config/api';
+import { mobileAuthService } from './authService';
+
+const authHeaders = async () => {
+  const token = await mobileAuthService.getAccessToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
 
 class MobileWalletService {
   constructor() {
@@ -12,7 +18,7 @@ class MobileWalletService {
 
   async getFeeQuote() {
     try {
-      const res = await fetch(`${API_BASE_URL}/wallet/fee-quote`);
+      const res = await fetch(`${API_BASE_URL}/wallet/fee-quote`, { headers: await authHeaders() });
       const json = await res.json();
       if (res.ok && json.data) return json.data;
       throw new Error(json.message || 'Fee quote request failed.');
@@ -24,7 +30,7 @@ class MobileWalletService {
   async getOrCreateWallet(userId) {
     if (!userId) throw new Error('Sign in to load your wallet.');
     try {
-      const res = await fetch(`${API_BASE_URL}/wallet/${encodeURIComponent(userId)}`);
+      const res = await fetch(`${API_BASE_URL}/wallet/${encodeURIComponent(userId)}`, { headers: await authHeaders() });
       const json = await res.json();
       if (res.ok && json.data) {
         this.memoryCache[userId] = json.data;
@@ -49,7 +55,7 @@ class MobileWalletService {
     try {
       const res = await fetch(`${API_BASE_URL}/wallet/transfer`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...await authHeaders() },
         body: JSON.stringify({
           senderUserId,
           recipientIdentifier: recipientAddressOrUsername,
@@ -70,11 +76,20 @@ class MobileWalletService {
     }
   }
 
+  async transferUsdt({ recipient, amount, note = '' }) {
+    return this.transfer({
+      senderUserId: 'current_user',
+      recipientAddressOrUsername: recipient,
+      amountUsdt: amount,
+      note,
+    });
+  }
+
   async claimFaucet(userId) {
     try {
       const res = await fetch(`${API_BASE_URL}/wallet/faucet`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...await authHeaders() },
         body: JSON.stringify({ userId, amountUsdt: 250 }),
       });
       const json = await res.json();
@@ -90,13 +105,14 @@ class MobileWalletService {
   }
 
   async getTransactions(userId) {
+    if (!userId) return [];
     try {
-      const res = await fetch(`${API_BASE_URL}/wallet/${encodeURIComponent(userId)}/transactions`);
+      const res = await fetch(`${API_BASE_URL}/wallet/${encodeURIComponent(userId)}/transactions`, { headers: await authHeaders() });
       const json = await res.json();
       if (res.ok && Array.isArray(json.data)) return json.data;
-      throw new Error(json.message || 'Transaction history request failed.');
-    } catch (error) {
-      throw new Error(`Unable to load transaction history. ${error.message}`);
+      return [];
+    } catch {
+      return [];
     }
   }
 }

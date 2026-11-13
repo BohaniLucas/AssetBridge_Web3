@@ -9,6 +9,7 @@ import {
   Platform,
   Alert,
   Animated,
+  AppState,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -17,8 +18,12 @@ import RemittanceScreen from './src/screens/RemittanceScreen';
 import StokvelScreen from './src/screens/StokvelScreen';
 import MarketsScreen from './src/screens/MarketsScreen';
 import CreatePotScreen from './src/screens/CreatePotScreen';
+import AuthFlowScreen from './src/screens/AuthFlowScreen';
+import SessionLockOverlay from './src/components/SessionLockOverlay';
+import { mobileAuthService } from './src/services/authService';
 import { mobileWalletService } from './src/services/walletService';
 import { mobilePotsService } from './src/services/potsService';
+import { sessionLockService } from './src/services/sessionLockService';
 
 // --- CUSTOM ANIMATED TAB BUTTON ---
 const AnimatedTabButton = ({ item, isFocused, onPress }) => {
@@ -79,6 +84,50 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState('wallet');
   const [wallet, setWallet] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [isLocked, setIsLocked] = useState(false);
+  const appStateRef = useRef(AppState.currentState);
+
+  useEffect(() => {
+    let mounted = true;
+    mobileAuthService.restoreSession()
+      .then((savedSession) => {
+        if (mounted) {
+          setSession(savedSession);
+          if (savedSession && sessionLockService.hasIdleExpired()) {
+            sessionLockService.lock();
+          }
+        }
+      })
+      .catch(() => { if (mounted) setSession(null); })
+      .finally(() => { if (mounted) setAuthLoading(false); });
+
+    // Subscribe to session lock updates
+    const unsubscribe = sessionLockService.subscribe((locked) => {
+      if (mounted) setIsLocked(locked);
+    });
+
+    // App state listener handles OS backgrounding & suspend/resume timing
+    const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
+      sessionLockService.handleAppStateChange(nextAppState, appStateRef.current);
+      appStateRef.current = nextAppState;
+    });
+
+    // Foreground periodic idle timer check (every 10s)
+    const idleCheckInterval = setInterval(() => {
+      if (appStateRef.current === 'active' && sessionLockService.hasIdleExpired()) {
+        sessionLockService.lock();
+      }
+    }, 10000);
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+      appStateSubscription.remove();
+      clearInterval(idleCheckInterval);
+    };
+  }, []);
 
   const TABS = [
     { id: 'wallet', label: 'Wallet', activeIcon: 'wallet', inactiveIcon: 'wallet-outline' },
@@ -88,13 +137,61 @@ export default function App() {
   ];
 
   const loadWallet = async () => {
+    if (!session?.user?.id) return;
     try {
-      const w = await mobileWalletService.getOrCreateWallet();
+      const w = await mobileWalletService.getOrCreateWallet(session.user.id);
       setWallet(w);
-    } catch {}
+    } catch {
+      setWallet(null);
+    }
   };
 
-  useEffect(() => { loadWallet(); }, []);
+  useEffect(() => {
+    if (session?.user?.id) loadWallet();
+    else setWallet(null);
+  }, [session?.user?.id]);
+
+  const handleSignOut = async () => {
+    const result = await mobileAuthService.signOut();
+    setSession(null);
+    setWallet(null);
+    setIsLocked(false);
+    setCurrentTab('wallet');
+    if (result?.warning) {
+      Alert.alert('Signed Out', result.warning);
+    }
+  };
+
+  const confirmSignOut = () => Alert.alert(
+    'Sign out of AssetBridge?',
+    'You can sign back in at any time.',
+    [
+      { text: 'Stay signed in', style: 'cancel' },
+      { text: 'Sign out', style: 'destructive', onPress: handleSignOut },
+    ],
+  );
+
+  if (authLoading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="dark-content" backgroundColor="#F1F4F8" />
+        <View style={styles.loadingScreen}>
+          <View style={styles.logoBadge}><Ionicons name="infinite" size={24} color="#00E676" /></View>
+          <Text style={styles.loadingBrand}>AssetBridge</Text>
+          <Text style={styles.loadingCopy}>Getting your account ready…</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!session?.user) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="light-content" backgroundColor="#0A0F1C" />
+        <AuthFlowScreen onAuthenticated={(nextSession) => setSession(nextSession)} />
+      </SafeAreaView>
+    );
+  }
 
   const handleNavigate = (tabName) => {
     if (['remittance', 'remit'].includes(tabName)) setCurrentTab('remittance');
@@ -113,20 +210,22 @@ export default function App() {
           <View style={styles.logoBadge}>
             <Ionicons name="infinite" size={22} color="#FFFFFF" />
           </View>
-          <Text style={styles.brandTitle}>InterLink</Text>
+          <Text style={styles.brandTitle}>AssetBridge</Text>
         </View>
 
-        <TouchableOpacity style={styles.profileChip} activeOpacity={0.7}>
-          <View style={styles.notificationDot} />
-          <Ionicons name="notifications-outline" size={20} color="#0A0F1C" style={{ marginRight: 10 }} />
+        <TouchableOpacity style={styles.profileChip} activeOpacity={0.7} onPress={confirmSignOut} accessibilityLabel="Sign out">
+          <Ionicons name="log-out-outline" size={19} color="#0A0F1C" style={{ marginRight: 9 }} />
           <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>MX</Text>
+            <Text style={styles.avatarText}>{(session.user.fullName || session.user.email || 'U').slice(0, 1).toUpperCase()}</Text>
           </View>
         </TouchableOpacity>
       </View>
 
       {/* --- SCREEN BODY --- */}
-      <View style={styles.screenContainer}>
+      <View
+        style={styles.screenContainer}
+        onTouchStart={() => sessionLockService.recordActivity()}
+      >
         {currentTab === 'createPot' ? (
           <CreatePotScreen onBack={() => setCurrentTab('stokvel')} onSave={async (potData) => {
             await mobilePotsService.createPot(potData, wallet?.userId);
@@ -141,9 +240,12 @@ export default function App() {
               return result;
             }}
             onFaucet={async () => {
-              await mobileWalletService.claimFaucet(wallet?.userId);
-              await loadWallet();
-              Alert.alert('Deposit complete', '250 USDT was added to your demo wallet.');
+              try {
+                await mobileWalletService.claimFaucet(wallet?.userId);
+                await loadWallet();
+              } catch (error) {
+                Alert.alert('Test funds unavailable', error.message || 'No funds were added.');
+              }
             }}
             onNavigate={handleNavigate} 
           />
@@ -167,6 +269,13 @@ export default function App() {
         </View>
       </View>
 
+      {/* Session Inactivity & Background Lock Overlay */}
+      <SessionLockOverlay
+        visible={Boolean(session && isLocked)}
+        userEmail={session?.user?.email}
+        onUnlocked={() => sessionLockService.unlock()}
+        onSignOut={handleSignOut}
+      />
     </SafeAreaView>
   );
 }
@@ -177,6 +286,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F4F8', // Soft cool gray keeps white surfaces distinct
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
+  loadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F4F8' },
+  loadingBrand: { color: '#0A0F1C', fontSize: 22, fontWeight: '900', marginTop: 13 },
+  loadingCopy: { color: '#64748B', fontSize: 13, marginTop: 8 },
 
   /* --- TOP NAV (Ultra Minimal & Clean) --- */
   topNav: {

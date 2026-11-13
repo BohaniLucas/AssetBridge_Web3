@@ -84,7 +84,10 @@ class WalletService {
 
     try {
       if (this.rpcUrl) {
-        this.provider = new ethers.JsonRpcProvider(this.rpcUrl);
+        const staticSepoliaNetwork = ethers.Network.from(11155111);
+        this.provider = new ethers.JsonRpcProvider(this.rpcUrl, staticSepoliaNetwork, {
+          staticNetwork: staticSepoliaNetwork,
+        });
       }
     } catch (err) {
       console.warn('[WalletService] Could not connect to RPC provider:', err.message);

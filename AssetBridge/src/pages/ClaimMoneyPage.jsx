@@ -1,423 +1,609 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  CheckCircle2,
-  Phone,
-  Lock,
+  AlertCircle,
+  AlertTriangle,
   ArrowRight,
+  BadgeCheck,
+  CheckCircle2,
+  Globe,
+  HelpCircle,
+  Info,
+  KeyRound,
+  Landmark,
+  Phone,
+  RefreshCw,
+  ShieldAlert,
   ShieldCheck,
   Sparkles,
-  Heart,
-  AlertCircle,
-  HelpCircle,
-  Building,
-  CreditCard,
 } from 'lucide-react';
 import { claimClientService } from '../services/claimClientService';
 
 export default function ClaimMoneyPage({ claimId: propClaimId }) {
-  // Extract claimId & secretCode from URL or hash
-  const getParams = () => {
-    const hash = window.location.hash;
-    const search = window.location.search;
-    let id = propClaimId || 'clm_demo_gogo';
-    let code = 'GOGO1234';
-
+  const extractOpaqueClaimId = () => {
+    if (propClaimId) return propClaimId;
+    const hash = window.location.hash || '';
+    const search = window.location.search || '';
     if (hash.includes('/claim/')) {
-      const parts = hash.split('/claim/')[1]?.split('?');
-      if (parts && parts[0]) id = parts[0];
-      if (parts && parts[1]) {
-        const urlParams = new URLSearchParams(parts[1]);
-        if (urlParams.get('code')) code = urlParams.get('code');
-      }
-    } else if (search.includes('claim=')) {
-      const urlParams = new URLSearchParams(search);
-      id = urlParams.get('claim') || id;
-      if (urlParams.get('code')) code = urlParams.get('code');
+      const idPart = hash.split('/claim/')[1]?.split('?')[0]?.trim();
+      if (idPart) return idPart;
     }
-
-    return { id, code };
+    if (search.includes('claim=')) {
+      const params = new URLSearchParams(search);
+      return params.get('claim') || '';
+    }
+    return '';
   };
 
-  const { id: claimId, code: initialCode } = getParams();
-
-  const [loading, setLoading] = useState(true);
+  const [claimIdInput, setClaimIdInput] = useState(extractOpaqueClaimId);
+  const [activeClaimId, setActiveClaimId] = useState(extractOpaqueClaimId);
+  const [lang, setLang] = useState('en');
+  const [loading, setLoading] = useState(Boolean(extractOpaqueClaimId()));
   const [claim, setClaim] = useState(null);
-  const [step, setStep] = useState(1); // 1: verify phone, 2: sms code, 3: set pin, 4: success
-  const [phone, setPhone] = useState('082 555 0192');
-  const [smsCode, setSmsCode] = useState('');
-  const [pin, setPin] = useState('');
-  const [confirmPin, setConfirmPin] = useState('');
+
+  // Step 1: Enter phone & one-time claim token -> Request OTP
+  // Step 2: Verify 6-digit SMS OTP
+  // Step 3: Plain-language review & Payout Method Selection
+  // Step 4: Deterministic Backend Status / Next Steps
+  const [step, setStep] = useState(1);
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [claimToken, setClaimToken] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [devTestOtpNotice, setDevTestOtpNotice] = useState('');
+  const [verificationSessionToken, setVerificationSessionToken] = useState('');
+  const [selectedPayoutMethod, setSelectedPayoutMethod] = useState('za_payshap_proxy');
   const [errorMsg, setErrorMsg] = useState('');
+  const [statusNotice, setStatusNotice] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [successData, setSuccessData] = useState(null);
+
+  const loadClaimSummary = useCallback(async (idToLoad, selectedLang = lang) => {
+    if (!idToLoad) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setErrorMsg('');
+    try {
+      const data = await claimClientService.getPublicClaim(idToLoad, selectedLang);
+      setClaim(data);
+    } catch (err) {
+      setClaim(null);
+      setErrorMsg(err.message || 'Claim link not found or unavailable.');
+    } finally {
+      setLoading(false);
+    }
+  }, [lang]);
 
   useEffect(() => {
-    claimClientService.getClaimLink(claimId).then((data) => {
-      setClaim(data);
-      if (data?.recipientPhone) {
-        setPhone(data.recipientPhone);
-      }
-      setLoading(false);
-    });
-  }, [claimId]);
+    if (activeClaimId) {
+      loadClaimSummary(activeClaimId, lang);
+    }
+  }, [activeClaimId, lang, loadClaimSummary]);
 
-  const handlePhoneSubmit = (e) => {
+  const handleLookupClaimId = (e) => {
     e.preventDefault();
-    if (!phone.trim()) {
+    if (!claimIdInput.trim()) {
+      setErrorMsg('Enter your claim reference ID (e.g. clm_...).');
+      return;
+    }
+    setActiveClaimId(claimIdInput.trim());
+  };
+
+  const handleRequestOtp = async (e) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setDevTestOtpNotice('');
+    if (!phoneNumber.trim()) {
       setErrorMsg('Please enter your mobile phone number.');
       return;
     }
-    setErrorMsg('');
-    setStep(2); // Move to SMS code
-  };
-
-  const handleSmsSubmit = (e) => {
-    e.preventDefault();
-    if (smsCode.trim() !== '123456' && smsCode.trim().length !== 6) {
-      setErrorMsg('Please enter the 6-digit code sent to your phone (Demo code: 123456).');
-      return;
-    }
-    setErrorMsg('');
-    setStep(3); // Move to Set PIN
-  };
-
-  const handlePinSubmit = async (e) => {
-    e.preventDefault();
-    if (!pin || pin.length < 4) {
-      setErrorMsg('Please choose a 4-digit security PIN.');
-      return;
-    }
-    if (pin !== confirmPin) {
-      setErrorMsg('PINs do not match. Please re-enter.');
+    if (!claimToken.trim()) {
+      setErrorMsg('Please enter the one-time secret claim code shared by the sender.');
       return;
     }
 
     setIsSubmitting(true);
-    setErrorMsg('');
-
     try {
-      const result = await claimClientService.claimMoney({
-        claimId,
-        secretCode: initialCode,
-        phoneNumber: phone,
-        smsCode,
-        pin,
+      const res = await claimClientService.requestClaimOtp(activeClaimId, {
+        claimToken: claimToken.trim(),
+        phoneNumber: phoneNumber.trim(),
       });
-
-      setSuccessData(result);
-      setStep(4); // Celebration page!
+      if (res._devTestOtpOnly) {
+        setDevTestOtpNotice(res._devTestOtpOnly);
+      }
+      setStatusNotice(res.message || 'Verification code issued.');
+      setStep(2);
     } catch (err) {
-      setErrorMsg(err.message || 'Unable to claim money. Please try again.');
+      setErrorMsg(err.message);
+      await loadClaimSummary(activeClaimId, lang);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center p-4 font-sans">
-        <div className="text-center space-y-3">
-          <div className="w-12 h-12 rounded-full border-4 border-emerald-500 border-t-transparent animate-spin mx-auto" />
-          <p className="text-sm font-semibold text-slate-600">Checking your transfer...</p>
-        </div>
-      </div>
-    );
-  }
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    setErrorMsg('');
+    if (!otpCode.trim() || otpCode.trim().length !== 6) {
+      setErrorMsg('Enter the 6-digit verification code sent to your phone.');
+      return;
+    }
 
-  const sender = claim?.senderName || 'Nomsa';
-  const amount = Number(claim?.amountZar || 400).toFixed(2);
+    setIsSubmitting(true);
+    try {
+      const res = await claimClientService.verifyClaimOtp(activeClaimId, {
+        otpCode: otpCode.trim(),
+      });
+      setVerificationSessionToken(res.verificationSessionToken);
+      setStatusNotice(res.message);
+      await loadClaimSummary(activeClaimId, lang);
+      setStep(3);
+    } catch (err) {
+      setErrorMsg(err.message);
+      await loadClaimSummary(activeClaimId, lang);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleConfirmPayout = async (e) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setIsSubmitting(true);
+    try {
+      const res = await claimClientService.confirmClaimPayout(activeClaimId, {
+        verificationSessionToken,
+        payoutMethod: selectedPayoutMethod,
+      });
+      setStatusNotice(res.message);
+      await loadClaimSummary(activeClaimId, lang);
+      setStep(4);
+    } catch (err) {
+      setErrorMsg(err.message);
+      await loadClaimSummary(activeClaimId, lang);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const guidance = claim?.aiGuidance;
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] flex flex-col justify-between p-4 sm:p-6 font-sans antialiased text-slate-800">
-      {/* Top Header */}
-      <header className="max-w-md mx-auto w-full pt-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black text-sm shadow-sm">
+      {/* Header */}
+      <header className="max-w-xl mx-auto w-full pt-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl bg-emerald-700 text-white flex items-center justify-center font-black text-sm shadow-sm">
             AB
           </div>
-          <span className="font-bold text-slate-900 text-sm tracking-tight">AssetBridge Money</span>
+          <div>
+            <span className="font-bold text-slate-900 text-sm block leading-none">
+              AssetBridge Gogo Claim
+            </span>
+            <span className="text-[11px] text-slate-500">
+              No App Installation Required · Sepolia Testnet
+            </span>
+          </div>
         </div>
-        <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-100/70 px-2.5 py-1 rounded-full flex items-center gap-1">
-          <ShieldCheck size={13} />
-          Safe & Verified
-        </span>
+
+        {/* Language Selector for AI-Assisted Plain-Language Guidance */}
+        <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs">
+          <Globe size={14} className="text-emerald-700" />
+          <select
+            aria-label="Select explanation language"
+            value={lang}
+            onChange={(e) => setLang(e.target.value)}
+            className="bg-transparent font-semibold text-slate-800 outline-none cursor-pointer"
+          >
+            <option value="en">English</option>
+            <option value="zu">isiZulu</option>
+            <option value="st">Sesotho</option>
+            <option value="af">Afrikaans</option>
+          </select>
+        </div>
       </header>
 
-      {/* Main Container */}
-      <main className="max-w-md mx-auto w-full my-auto py-6">
-        <div className="bg-white rounded-[2rem] border border-amber-100/80 p-6 sm:p-8 shadow-xl shadow-amber-950/5 space-y-6">
-          {/* STEP 1: Phone Verification */}
-          {step === 1 && (
-            <div className="space-y-6 text-center">
-              <div className="w-16 h-16 rounded-3xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center text-3xl shadow-inner">
-                💌
-              </div>
+      <main className="max-w-xl mx-auto w-full my-auto py-6 space-y-5">
+        {/* Claim Reference Lookup if no ID in URL */}
+        {!activeClaimId && (
+          <div className="bg-white rounded-[2rem] border border-slate-200 p-6 sm:p-8 shadow-sm space-y-4">
+            <h1 className="text-xl font-extrabold text-slate-900">
+              Enter Your Gogo Claim Reference
+            </h1>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Paste the claim reference ID (starting with <span className="font-mono font-bold">clm_</span>) shared by your family member.
+            </p>
+            <form onSubmit={handleLookupClaimId} className="space-y-3">
+              <input
+                type="text"
+                value={claimIdInput}
+                onChange={(e) => setClaimIdInput(e.target.value)}
+                placeholder="clm_..."
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-mono text-sm text-slate-900 outline-none focus:bg-white focus:border-emerald-600"
+              />
+              <button
+                type="submit"
+                className="w-full rounded-xl bg-emerald-700 py-3 text-sm font-bold text-white hover:bg-emerald-800"
+              >
+                Load Claim Details
+              </button>
+            </form>
+          </div>
+        )}
 
+        {loading && (
+          <div className="bg-white rounded-[2rem] border border-slate-200 p-8 text-center space-y-3">
+            <RefreshCw size={24} className="animate-spin text-emerald-600 mx-auto" />
+            <p className="text-xs font-semibold text-slate-600">Loading deterministic claim status from backend…</p>
+          </div>
+        )}
+
+        {activeClaimId && !loading && !claim && (
+          <div className="bg-white rounded-[2rem] border border-rose-200 p-6 space-y-4 text-center">
+            <AlertCircle size={32} className="text-rose-600 mx-auto" />
+            <h2 className="text-base font-bold text-slate-900">Claim Reference Unavailable</h2>
+            <p className="text-xs text-rose-700">{errorMsg}</p>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveClaimId('');
+                setErrorMsg('');
+              }}
+              className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+            >
+              Try Another Claim ID
+            </button>
+          </div>
+        )}
+
+        {claim && (
+          <>
+            {/* Deterministic Backend Status Banner */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-4 flex flex-wrap items-center justify-between gap-3 shadow-sm">
               <div>
-                <span className="inline-block text-xs font-bold text-emerald-700 uppercase tracking-wider mb-1">
-                  You Have Money Waiting
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                  Deterministic Backend Status
                 </span>
-                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 leading-tight">
-                  {sender} sent you R{amount}
-                </h1>
-                <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-                  Enter your mobile number to confirm it's you. No app to download.
-                </p>
-              </div>
-
-              {errorMsg && (
-                <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700 text-left flex items-center gap-2">
-                  <AlertCircle size={15} className="shrink-0" />
-                  <span>{errorMsg}</span>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-sm font-extrabold text-slate-900">
+                    {claim.status.toUpperCase()}
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    · Ref: <span className="font-mono">{claim.id}</span>
+                  </span>
                 </div>
-              )}
+              </div>
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-bold ${
+                  claim.fundingVerified
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-amber-100 text-amber-800'
+                }`}
+              >
+                {claim.fundingVerified ? 'On-Chain Funded (Sepolia)' : 'Awaiting Sender On-Chain Funding'}
+              </span>
+            </div>
 
-              <form onSubmit={handlePhoneSubmit} className="space-y-4 text-left">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Your Mobile Phone Number
-                  </label>
-                  <div className="relative">
-                    <Phone size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="tel"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="e.g. 082 123 4567"
-                      className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-900 focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition"
-                      required
-                    />
+            {/* AI-Assisted Plain-Language Helper & Scam Warnings */}
+            {guidance && (
+              <section className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 space-y-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-1.5 font-extrabold text-emerald-950">
+                    <Sparkles size={15} className="text-emerald-700" />
+                    <span>Gogo Plain-Language Guide ({guidance.languageName})</span>
+                  </span>
+                  <span className="text-[10px] font-semibold text-emerald-800 bg-white/80 px-2 py-0.5 rounded-md border border-emerald-200">
+                    Read-Only Guide
+                  </span>
+                </div>
+
+                <p className="text-emerald-900 font-medium leading-relaxed">
+                  {guidance.greeting} {guidance.plainLanguageSummary}
+                </p>
+
+                <div className="space-y-1 text-emerald-900">
+                  {guidance.steps.map((s, idx) => (
+                    <div key={idx} className="text-[11px]">{s}</div>
+                  ))}
+                </div>
+
+                <div className="rounded-xl bg-amber-50/90 border border-amber-200 p-3 space-y-1 text-[11px] text-amber-950">
+                  <div className="font-bold flex items-center gap-1.5">
+                    <ShieldAlert size={14} className="text-amber-700" />
+                    <span>Important Scam &amp; Safety Warnings:</span>
                   </div>
+                  <ul className="list-disc pl-4 space-y-0.5">
+                    {guidance.scamWarnings.map((w, i) => (
+                      <li key={i}>{w}</li>
+                    ))}
+                  </ul>
                 </div>
 
-                <button
-                  type="submit"
-                  className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm shadow-md shadow-emerald-600/25 transition flex items-center justify-center gap-2"
-                >
-                  <span>Continue</span>
-                  <ArrowRight size={16} />
-                </button>
-              </form>
-
-              <p className="text-[11px] text-slate-400">
-                🔒 Free instant deposit into your phone account
-              </p>
-            </div>
-          )}
-
-          {/* STEP 2: 6-Digit SMS Code */}
-          {step === 2 && (
-            <div className="space-y-6 text-center">
-              <div className="w-16 h-16 rounded-3xl bg-blue-50 text-blue-600 mx-auto flex items-center justify-center text-3xl shadow-inner">
-                📲
-              </div>
-
-              <div>
-                <span className="inline-block text-xs font-bold text-blue-700 uppercase tracking-wider mb-1">
-                  Step 2 of 3: SMS Verification
-                </span>
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900">
-                  Enter the 6-Digit SMS Code
-                </h1>
-                <p className="text-xs text-slate-500 mt-2">
-                  We sent a code to <strong className="text-slate-800">{phone}</strong>.
+                <p className="text-[10px] text-slate-500 italic">
+                  {guidance.aiSafetyBoundary}
                 </p>
-              </div>
+              </section>
+            )}
 
-              {/* Demo Helper Banner */}
-              <div className="rounded-xl bg-blue-50/80 border border-blue-200/80 p-2.5 text-xs text-blue-800 font-medium">
-                💡 Demo Hackathon Helper: Enter code <span className="font-mono font-black text-blue-900">123456</span>
-              </div>
-
+            {/* Main Interactive Verification Card */}
+            <div className="bg-white rounded-[2rem] border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
               {errorMsg && (
-                <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700 text-left flex items-center gap-2">
-                  <AlertCircle size={15} className="shrink-0" />
+                <div role="alert" className="rounded-xl bg-rose-50 border border-rose-200 p-3.5 text-xs text-rose-800 flex items-start gap-2.5">
+                  <AlertCircle size={16} className="shrink-0 mt-0.5 text-rose-600" />
                   <span>{errorMsg}</span>
                 </div>
               )}
 
-              <form onSubmit={handleSmsSubmit} className="space-y-4">
-                <input
-                  type="text"
-                  maxLength={6}
-                  value={smsCode}
-                  onChange={(e) => setSmsCode(e.target.value)}
-                  placeholder="123456"
-                  className="w-full text-center text-2xl tracking-[0.4em] font-mono font-black py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition"
-                  required
-                  autoFocus
-                />
-
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setStep(1)}
-                    className="w-1/3 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition"
-                  >
-                    Change Phone
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm shadow-md shadow-emerald-600/25 transition"
-                  >
-                    Verify Code
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          {/* STEP 3: Set Security PIN */}
-          {step === 3 && (
-            <div className="space-y-6 text-center">
-              <div className="w-16 h-16 rounded-3xl bg-purple-50 text-purple-600 mx-auto flex items-center justify-center text-3xl shadow-inner">
-                🔑
-              </div>
-
-              <div>
-                <span className="inline-block text-xs font-bold text-purple-700 uppercase tracking-wider mb-1">
-                  Final Step: Protect Your Account
-                </span>
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900">
-                  Set Your 4-Digit Secret PIN
-                </h1>
-                <p className="text-xs text-slate-500 mt-2">
-                  You will use this PIN whenever you access or spend your money.
-                </p>
-              </div>
-
-              {errorMsg && (
-                <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700 text-left flex items-center gap-2">
-                  <AlertCircle size={15} className="shrink-0" />
-                  <span>{errorMsg}</span>
+              {statusNotice && !errorMsg && (
+                <div className="rounded-xl bg-blue-50 border border-blue-200 p-3.5 text-xs text-blue-900 flex items-start gap-2.5">
+                  <Info size={16} className="shrink-0 mt-0.5 text-blue-700" />
+                  <span>{statusNotice}</span>
                 </div>
               )}
 
-              <form onSubmit={handlePinSubmit} className="space-y-4 text-left">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Choose 4-Digit PIN
-                  </label>
-                  <input
-                    type="password"
-                    maxLength={4}
-                    value={pin}
-                    onChange={(e) => setPin(e.target.value)}
-                    placeholder="••••"
-                    className="w-full text-center text-xl tracking-[0.5em] font-mono py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 focus:bg-white focus:border-purple-500 outline-none transition"
-                    required
-                  />
+              {/* Locked / Cancelled / Expired / Refunded terminal states */}
+              {['locked', 'cancelled', 'refunded', 'expired'].includes(claim.status) ? (
+                <div className="space-y-4 text-center py-4">
+                  <AlertTriangle size={36} className="text-amber-600 mx-auto" />
+                  <h2 className="text-lg font-extrabold text-slate-900">
+                    This Claim Link is {claim.status.toUpperCase()}
+                  </h2>
+                  <p className="text-xs text-slate-600 leading-relaxed max-w-md mx-auto">
+                    {claim.status === 'locked'
+                      ? 'Too many unsuccessful verification attempts were made. For your protection, this link is locked. Contact the sender so they can reclaim the escrow funds or issue a new link.'
+                      : 'This claim link is no longer active. Please contact the sender if you need assistance.'}
+                  </p>
                 </div>
+              ) : (
+                <>
+                  {/* STEP 1: Verify One-Time Claim Code & Recipient Phone */}
+                  {step === 1 && (
+                    <form onSubmit={handleRequestOtp} className="space-y-4">
+                      <div>
+                        <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">
+                          Step 1 of 3 · Identity &amp; Claim Code Verification
+                        </span>
+                        <h2 className="text-xl font-extrabold text-slate-900 mt-1">
+                          {claim.senderDisplayName} prepared {claim.receiveSymbol}
+                          {claim.receiveAmountFormatted} {claim.receiveCurrency} for {claim.recipientName}
+                        </h2>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Confirm the mobile number ({claim.recipientPhoneMasked}) and enter the one-time secret claim code sent to you.
+                        </p>
+                      </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Confirm PIN
-                  </label>
-                  <input
-                    type="password"
-                    maxLength={4}
-                    value={confirmPin}
-                    onChange={(e) => setConfirmPin(e.target.value)}
-                    placeholder="••••"
-                    className="w-full text-center text-xl tracking-[0.5em] font-mono py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 focus:bg-white focus:border-purple-500 outline-none transition"
-                    required
-                  />
-                </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Your Mobile Phone Number
+                        </label>
+                        <div className="relative">
+                          <Phone size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="tel"
+                            value={phoneNumber}
+                            onChange={(e) => setPhoneNumber(e.target.value)}
+                            placeholder="+27 82 000 0000"
+                            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm font-semibold text-slate-900 outline-none focus:bg-white focus:border-emerald-600"
+                            required
+                          />
+                        </div>
+                      </div>
 
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm shadow-md shadow-emerald-600/25 transition flex items-center justify-center gap-2"
-                >
-                  {isSubmitting ? (
-                    <span>Depositing R{amount}...</span>
-                  ) : (
-                    <>
-                      <span>Claim R{amount} Now</span>
-                      <ArrowRight size={16} />
-                    </>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          One-Time Secret Claim Code
+                        </label>
+                        <div className="relative">
+                          <KeyRound size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="text"
+                            value={claimToken}
+                            onChange={(e) => setClaimToken(e.target.value)}
+                            placeholder="Paste the secret code shared by the sender"
+                            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 font-mono text-xs font-semibold text-slate-900 outline-none focus:bg-white focus:border-emerald-600"
+                            required
+                          />
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          Attempts remaining: {claim.verificationRequirements?.remainingAttempts ?? 5}
+                        </p>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="w-full rounded-xl bg-emerald-700 py-3.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-800 disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        <span>{isSubmitting ? 'Verifying…' : 'Send 6-Digit SMS Verification Code'}</span>
+                        <ArrowRight size={16} />
+                      </button>
+                    </form>
                   )}
-                </button>
-              </form>
-            </div>
-          )}
 
-          {/* STEP 4: Celebration Success Screen ("R400 is yours") */}
-          {step === 4 && (
-            <div className="space-y-6 text-center animate-fade-in">
-              <div className="w-20 h-20 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center text-4xl shadow-inner">
-                🎉
-              </div>
+                  {/* STEP 2: Verify 6-Digit OTP */}
+                  {step === 2 && (
+                    <form onSubmit={handleVerifyOtp} className="space-y-4">
+                      <div>
+                        <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">
+                          Step 2 of 3 · SMS OTP Verification
+                        </span>
+                        <h2 className="text-xl font-extrabold text-slate-900 mt-1">
+                          Enter the 6-Digit Verification Code
+                        </h2>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Enter the code generated for {claim.recipientPhoneMasked}. Demo codes (such as 123456) are strictly rejected.
+                        </p>
+                      </div>
 
-              <div>
-                <span className="inline-block text-xs font-bold text-emerald-700 uppercase tracking-wider mb-1">
-                  Transfer Complete
-                </span>
-                <h1 className="text-3xl font-black text-slate-900">
-                  R{amount} is yours!
-                </h1>
-                <p className="text-xs text-slate-500 mt-2">
-                  Sent with love by <strong className="text-slate-800">{sender}</strong>.
-                </p>
-              </div>
+                      {devTestOtpNotice && (
+                        <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950">
+                          <strong>[Non-Production Dev Test Mode Only]:</strong> Generated one-time OTP is{' '}
+                          <span className="font-mono font-black underline">{devTestOtpNotice}</span>
+                        </div>
+                      )}
 
-              {/* Rand Balance Card */}
-              <div className="rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 p-6 text-white shadow-lg space-y-2 text-left">
-                <span className="text-xs font-bold text-emerald-100 uppercase tracking-wider block">
-                  Your Available Balance
-                </span>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-3xl sm:text-4xl font-black font-mono">R{amount}</span>
-                </div>
-                <div className="pt-2 border-t border-emerald-500/40 text-[11px] text-emerald-100 flex items-center justify-between">
-                  <span>Linked Phone: {phone}</span>
-                  <span className="bg-white/20 px-2 py-0.5 rounded-full text-[10px] font-bold">Safe & Active</span>
-                </div>
-              </div>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={otpCode}
+                        onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))}
+                        placeholder="••••••"
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3.5 text-center font-mono text-2xl font-black tracking-[0.4em] text-slate-900 outline-none focus:bg-white focus:border-emerald-600"
+                        required
+                      />
 
-              {/* Simple Non-Crypto Options */}
-              <div className="space-y-2.5 text-left pt-2">
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">💰</span>
-                    <div>
-                      <strong className="block text-slate-800">Hold Safely in Rand</strong>
-                      <span className="text-[11px] text-slate-400">Protected in your phone account</span>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setStep(1)}
+                          className="rounded-xl border border-slate-200 px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                        >
+                          Back
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isSubmitting}
+                          className="flex-1 rounded-xl bg-emerald-700 py-3 text-sm font-bold text-white hover:bg-emerald-800 disabled:opacity-50"
+                        >
+                          {isSubmitting ? 'Checking OTP…' : 'Verify Code & Continue'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* STEP 3: Plain-Language Review & Payout Selection */}
+                  {step === 3 && (
+                    <form onSubmit={handleConfirmPayout} className="space-y-5">
+                      <div>
+                        <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">
+                          Step 3 of 3 · Plain-Language Transfer Review
+                        </span>
+                        <h2 className="text-xl font-extrabold text-slate-900 mt-1">
+                          Review Your Transfer Before Confirming
+                        </h2>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Check every detail below. We never ask for a PIN, bank password, or wallet recovery phrase.
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl bg-slate-50 border border-slate-200 p-4 space-y-2.5 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Sender</span>
+                          <strong className="text-slate-900">{claim.senderDisplayName}</strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Verified Recipient</span>
+                          <strong className="text-slate-900">
+                            {claim.recipientName} ({claim.recipientPhoneMasked})
+                          </strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Amount Sent by Sender</span>
+                          <strong className="text-slate-900">
+                            ${claim.sendAmountFormatted} {claim.sendCurrency}
+                          </strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Platform / Escrow Fee</span>
+                          <strong className="text-slate-900">
+                            ${claim.feeAmountFormatted} {claim.sendCurrency}
+                          </strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Reference Exchange Rate</span>
+                          <strong className="text-slate-900">
+                            1 USDT = {claim.fxRateDisplay} {claim.receiveCurrency} ({claim.rateSource})
+                          </strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">On-Chain Funding Status</span>
+                          <strong className={claim.fundingVerified ? 'text-emerald-700' : 'text-amber-700'}>
+                            {claim.fundingVerified
+                              ? `Confirmed (${claim.fundingTxHash?.slice(0, 10)}…)`
+                              : 'Awaiting Sender On-Chain Funding'}
+                          </strong>
+                        </div>
+                        <div className="border-t border-slate-200 pt-2.5 flex justify-between items-baseline text-sm">
+                          <span className="font-bold text-slate-700">Estimated Local Amount</span>
+                          <strong className="text-lg font-black text-emerald-800">
+                            {claim.receiveSymbol} {claim.receiveAmountFormatted} {claim.receiveCurrency}
+                          </strong>
+                        </div>
+                      </div>
+
+                      {/* Payout Method Selection */}
+                      <div className="space-y-2">
+                        <label className="block text-xs font-bold text-slate-700">
+                          Select Payout Rail
+                        </label>
+                        {claim.supportedPayoutMethods?.map((method) => (
+                          <label
+                            key={method.id}
+                            className={`flex items-start justify-between gap-3 rounded-xl border p-3.5 cursor-pointer text-xs ${
+                              selectedPayoutMethod === method.id
+                                ? 'border-emerald-600 bg-emerald-50/50'
+                                : 'border-slate-200 bg-white'
+                            }`}
+                          >
+                            <div className="flex items-start gap-2.5">
+                              <input
+                                type="radio"
+                                name="payoutMethod"
+                                value={method.id}
+                                checked={selectedPayoutMethod === method.id}
+                                onChange={() => setSelectedPayoutMethod(method.id)}
+                                className="mt-0.5"
+                              />
+                              <div>
+                                <div className="font-bold text-slate-900">{method.name}</div>
+                                <div className="text-[11px] text-slate-500 mt-0.5">{method.description}</div>
+                              </div>
+                            </div>
+                            <span
+                              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                method.available
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}
+                            >
+                              {method.statusLabel}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="w-full rounded-xl bg-emerald-700 py-3.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-800 disabled:opacity-50"
+                      >
+                        {isSubmitting ? 'Submitting Payout Request…' : 'Confirm & Request Payout'}
+                      </button>
+                    </form>
+                  )}
+
+                  {/* STEP 4: Final Deterministic Outcome */}
+                  {step === 4 && (
+                    <div className="space-y-4 text-center py-4">
+                      <CheckCircle2 size={40} className="text-emerald-600 mx-auto" />
+                      <h2 className="text-xl font-extrabold text-slate-900">
+                        Payout Status: {claim.status.toUpperCase()}
+                      </h2>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        {statusNotice}
+                      </p>
                     </div>
-                  </div>
-                  <CheckCircle2 size={16} className="text-emerald-600" />
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs opacity-75">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">🏪</span>
-                    <div>
-                      <strong className="block text-slate-800">Cash-Out at Retail Agent</strong>
-                      <span className="text-[11px] text-slate-400">Shoprite / Pick n Pay (Coming next phase)</span>
-                    </div>
-                  </div>
-                  <span className="text-[10px] bg-slate-200 text-slate-600 font-bold px-2 py-0.5 rounded-full">Next Phase</span>
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-slate-100 text-center">
-                <p className="text-[11px] text-slate-400">
-                  Ref: {successData?.claimedTxHash?.slice(0, 10)}...{successData?.claimedTxHash?.slice(-6)}
-                </p>
-                <p className="text-[11px] text-emerald-700 font-bold mt-1">
-                  "She never needed to know what a blockchain is."
-                </p>
-              </div>
+                  )}
+                </>
+              )}
             </div>
-          )}
-        </div>
+          </>
+        )}
       </main>
 
-      {/* Footer */}
-      <footer className="max-w-md mx-auto w-full text-center text-xs text-slate-400 pb-4">
-        AssetBridge Africa · Simple, safe cross-border payments for everyone
+      <footer className="max-w-xl mx-auto w-full text-center text-[11px] text-slate-400 pb-4">
+        AssetBridge Remittance · Need help? Contact support or ask the sender to cancel/refund from their dashboard.
       </footer>
     </div>
   );
 }
-

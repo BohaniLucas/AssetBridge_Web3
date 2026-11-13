@@ -1,360 +1,291 @@
+/**
+ * Mobile Remittance & Gogo Claim Client Service
+ *
+ * Uses the backend as the single source of business logic.
+ * Includes Bearer token authentication on every protected call.
+ * Zero hardcoded FX rates, fake savings claims, or sample personal data.
+ */
+
 import { API_BASE_URL } from '../config/api';
+import { mobileAuthService } from './authService';
 
-export const FX_DESTINATIONS = [
-  // --- Africa ---
-  {
-    code: 'tKES',
-    iso: 'KE',
-    name: 'Kenyan Shilling',
-    country: 'Kenya',
-    flag: '🇰🇪',
-    region: 'Africa',
-    ratePerUsd: 129.50,
-    symbol: 'KSh',
-    mobileChannels: ['M-Pesa', 'Airtel Money'],
-    recipientType: 'M-Pesa Phone Number (+254...)',
-    defaultRecipient: '+254 712 345 678',
-  },
-  {
-    code: 'tZAR',
-    iso: 'ZA',
-    name: 'South African Rand',
-    country: 'South Africa',
-    flag: '🇿🇦',
-    region: 'Africa',
-    ratePerUsd: 17.85,
-    symbol: 'R',
-    mobileChannels: ['Capitec Pay', 'FNB eWallet'],
-    recipientType: 'Capitec / Bank Phone (+27...)',
-    defaultRecipient: '+27 82 123 4567',
-  },
-  {
-    code: 'tNGN',
-    iso: 'NG',
-    name: 'Nigerian Naira',
-    country: 'Nigeria',
-    flag: '🇳🇬',
-    region: 'Africa',
-    ratePerUsd: 1660.00,
-    symbol: '₦',
-    mobileChannels: ['OPay', 'PalmPay'],
-    recipientType: 'OPay / Account Number (+234...)',
-    defaultRecipient: '+234 801 234 5678',
-  },
-  {
-    code: 'tGHS',
-    iso: 'GH',
-    name: 'Ghanaian Cedi',
-    country: 'Ghana',
-    flag: '🇬🇭',
-    region: 'Africa',
-    ratePerUsd: 15.40,
-    symbol: 'GH₵',
-    mobileChannels: ['MTN MoMo', 'Telecel Cash'],
-    recipientType: 'MTN Mobile Money (+233...)',
-    defaultRecipient: '+233 24 123 4567',
-  },
-  {
-    code: 'tUGX',
-    iso: 'UG',
-    name: 'Ugandan Shilling',
-    country: 'Uganda',
-    flag: '🇺🇬',
-    region: 'Africa',
-    ratePerUsd: 3680.00,
-    symbol: 'USh',
-    mobileChannels: ['MTN MoMo', 'Airtel Money'],
-    recipientType: 'Airtel / MTN Mobile (+256...)',
-    defaultRecipient: '+256 701 234 567',
-  },
-  {
-    code: 'tRWF',
-    iso: 'RW',
-    name: 'Rwandan Franc',
-    country: 'Rwanda',
-    flag: '🇷🇼',
-    region: 'Africa',
-    ratePerUsd: 1395.00,
-    symbol: 'FRw',
-    mobileChannels: ['MTN MoMo Rwanda'],
-    recipientType: 'MoMo Number (+250...)',
-    defaultRecipient: '+250 788 123 456',
-  },
-  {
-    code: 'tEGP',
-    iso: 'EG',
-    name: 'Egyptian Pound',
-    country: 'Egypt',
-    flag: '🇪🇬',
-    region: 'Africa',
-    ratePerUsd: 49.20,
-    symbol: 'E£',
-    mobileChannels: ['Vodafone Cash', 'InstaPay'],
-    recipientType: 'InstaPay / Mobile (+20...)',
-    defaultRecipient: '+20 100 123 4567',
-  },
+async function getAuthHeaders() {
+  const token = await mobileAuthService.getAccessToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
 
-  // --- Americas ---
-  {
-    code: 'tUSD',
-    iso: 'US',
-    name: 'United States Dollar',
-    country: 'United States',
-    flag: '🇺🇸',
-    region: 'Americas',
-    ratePerUsd: 1.00,
-    symbol: '$',
-    mobileChannels: ['FedNow Instant', 'ACH Direct'],
-    recipientType: 'Routing & Account / Email / Phone',
-    defaultRecipient: 'alex.smith@gmail.com',
-  },
-  {
-    code: 'tCAD',
-    iso: 'CA',
-    name: 'Canadian Dollar',
-    country: 'Canada',
-    flag: '🇨🇦',
-    region: 'Americas',
-    ratePerUsd: 1.39,
-    symbol: 'CA$',
-    mobileChannels: ['Interac e-Transfer'],
-    recipientType: 'Interac Email / Mobile',
-    defaultRecipient: 'sarah.m@interac.ca',
-  },
-  {
-    code: 'tBRL',
-    iso: 'BR',
-    name: 'Brazilian Real',
-    country: 'Brazil',
-    flag: '🇧🇷',
-    region: 'Americas',
-    ratePerUsd: 5.75,
-    symbol: 'R$',
-    mobileChannels: ['Pix Instant Pay'],
-    recipientType: 'Pix Key (CPF / Email / Phone)',
-    defaultRecipient: '123.456.789-00',
-  },
-  {
-    code: 'tMXN',
-    iso: 'MX',
-    name: 'Mexican Peso',
-    country: 'Mexico',
-    flag: '🇲🇽',
-    region: 'Americas',
-    ratePerUsd: 20.15,
-    symbol: 'Mex$',
-    mobileChannels: ['SPEI Instant'],
-    recipientType: 'CLABE 18-digits / Mobile',
-    defaultRecipient: '012180001234567890',
-  },
+export function generateIdempotencyKey(prefix = 'mob_remit') {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+}
 
-  // --- Europe & UK ---
-  {
-    code: 'tGBP',
-    iso: 'GB',
-    name: 'British Pound',
-    country: 'United Kingdom',
-    flag: '🇬🇧',
-    region: 'Europe & UK',
-    ratePerUsd: 0.79,
-    symbol: '£',
-    mobileChannels: ['Faster Payments (FPS)', 'Revolut'],
-    recipientType: 'Sort Code (6-digits) & Account (8-digits)',
-    defaultRecipient: '40-47-84 71234567',
-  },
-  {
-    code: 'tEUR',
-    iso: 'EU',
-    name: 'Euro',
-    country: 'Eurozone (EU)',
-    flag: '🇪🇺',
-    region: 'Europe & UK',
-    ratePerUsd: 0.93,
-    symbol: '€',
-    mobileChannels: ['SEPA Instant Credit', 'iDEAL'],
-    recipientType: 'IBAN (e.g. DE89...)',
-    defaultRecipient: 'DE89 3704 0044 0532 0130 00',
-  },
-  {
-    code: 'tCHF',
-    iso: 'CH',
-    name: 'Swiss Franc',
-    country: 'Switzerland',
-    flag: '🇨🇭',
-    region: 'Europe & UK',
-    ratePerUsd: 0.88,
-    symbol: 'CHF',
-    mobileChannels: ['SIC Instant', 'TWINT Pay'],
-    recipientType: 'TWINT Mobile / Swiss IBAN',
-    defaultRecipient: '+41 79 123 45 67',
-  },
-
-  // --- Asia-Pacific ---
-  {
-    code: 'tINR',
-    iso: 'IN',
-    name: 'Indian Rupee',
-    country: 'India',
-    flag: '🇮🇳',
-    region: 'Asia-Pacific',
-    ratePerUsd: 84.35,
-    symbol: '₹',
-    mobileChannels: ['UPI Instant Pay', 'IMPS'],
-    recipientType: 'UPI ID (e.g. name@okhdfcbank)',
-    defaultRecipient: 'aarav.sharma@upi',
-  },
-  {
-    code: 'tPHP',
-    iso: 'PH',
-    name: 'Philippine Peso',
-    country: 'Philippines',
-    flag: '🇵🇭',
-    region: 'Asia-Pacific',
-    ratePerUsd: 58.70,
-    symbol: '₱',
-    mobileChannels: ['GCash', 'Maya Mobile'],
-    recipientType: 'GCash / Maya Phone (+63...)',
-    defaultRecipient: '+63 917 123 4567',
-  },
-  {
-    code: 'tAED',
-    iso: 'AE',
-    name: 'UAE Dirham',
-    country: 'United Arab Emirates',
-    flag: '🇦🇪',
-    region: 'Asia-Pacific',
-    ratePerUsd: 3.67,
-    symbol: 'AED',
-    mobileChannels: ['Aani Instant Pay'],
-    recipientType: 'Aani Mobile / IBAN (+971...)',
-    defaultRecipient: '+971 50 123 4567',
-  },
-  {
-    code: 'tSGD',
-    iso: 'SG',
-    name: 'Singapore Dollar',
-    country: 'Singapore',
-    flag: '🇸🇬',
-    region: 'Asia-Pacific',
-    ratePerUsd: 1.34,
-    symbol: 'S$',
-    mobileChannels: ['PayNow Instant', 'FAST'],
-    recipientType: 'PayNow NRIC / Mobile (+65...)',
-    defaultRecipient: '+65 9123 4567',
-  },
-  {
-    code: 'tJPY',
-    iso: 'JP',
-    name: 'Japanese Yen',
-    country: 'Japan',
-    flag: '🇯🇵',
-    region: 'Asia-Pacific',
-    ratePerUsd: 153.20,
-    symbol: '¥',
-    mobileChannels: ['Zengin Real-Time', 'PayPay'],
-    recipientType: 'Bank Code & Account / PayPay ID',
-    defaultRecipient: '0001-1234567',
-  },
-];
-
-export const REGIONS = ['All', 'Africa', 'Americas', 'Europe & UK', 'Asia-Pacific'];
+export const REGIONS = ['All', 'App-to-App', 'Africa', 'Europe & UK'];
 
 export const remittanceService = {
-  getDestinations() {
-    return FX_DESTINATIONS;
-  },
-
-  getDestination(code) {
-    return FX_DESTINATIONS.find((d) => d.code === code) || FX_DESTINATIONS[0];
-  },
-
   async fetchDestinations() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/remittance/destinations`);
-      if (res.ok) {
-        const json = await res.json();
-        if (json.data && Array.isArray(json.data) && json.data.length > 0) {
-          return json.data;
-        }
-      }
-    } catch {
-      // Fallback cleanly to built-in worldwide catalog
+    const res = await fetch(`${API_BASE_URL}/remittance/destinations`, {
+      headers: { Accept: 'application/json' },
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.message || 'Unable to load remittance corridors from backend.');
     }
-    return FX_DESTINATIONS;
+    return Array.isArray(json.data) ? json.data : [];
   },
 
-  calculateComparison(amountUsd = 100, targetCode = 'tKES') {
-    const dest = FX_DESTINATIONS.find((d) => d.code === targetCode) || FX_DESTINATIONS[0];
-    const amount = Number(amountUsd) || 0;
-
-    // AssetBridge metrics
-    const abFee = 0.20; // 20 cents network fee
-    const abNetSend = Math.max(0, amount - abFee);
-    const abReceived = abNetSend * dest.ratePerUsd;
-
-    // Typical Bank Wire / Legacy Remittance Operator
-    const bankFixedFee = 15.00; // $15 average global wire / sending fee
-    const bankFxMarkupRate = 0.045; // 4.5% hidden FX markup
-    const bankEffectiveRate = dest.ratePerUsd * (1 - bankFxMarkupRate);
-    const bankNetSend = Math.max(0, amount - bankFixedFee);
-    const bankReceived = bankNetSend * bankEffectiveRate;
-
-    const extraReceivedLocal = Math.max(0, abReceived - bankReceived);
-    const extraReceivedUsd = extraReceivedLocal / dest.ratePerUsd;
-
-    return {
-      sendAmount: amount,
-      dest,
-      assetBridge: {
-        receivedFormatted: `${dest.symbol} ${abReceived.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        receivedRaw: abReceived,
-        fee: `$${abFee.toFixed(2)}`,
-        speed: '~3 seconds (On-chain)',
-        settlementTime: 'Instant (~4 seconds on-chain)',
-        exchangeRateFormatted: `1 USDT = ${dest.ratePerUsd.toLocaleString()} ${dest.symbol}`,
-        effectiveRate: `1 USDT = ${dest.ratePerUsd.toLocaleString()} ${dest.symbol}`,
-        spread: '0.0% (Zero hidden markup)',
-      },
-      traditionalBank: {
-        receivedFormatted: `${dest.symbol} ${bankReceived.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        fee: `$${bankFixedFee.toFixed(2)}`,
-        speed: '3 - 5 business days',
-        exchangeRateFormatted: `1 USD = ${bankEffectiveRate.toFixed(2)} ${dest.symbol}`,
-        spread: '4.5% hidden markup',
-      },
-      bankWire: {
-        receivedFormatted: `${dest.symbol} ${bankReceived.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        fee: `$${bankFixedFee.toFixed(2)}`,
-        spread: '4.5% hidden markup',
-        settlementTime: '3 - 5 business days',
-        effectiveRate: `1 USD = ${bankEffectiveRate.toFixed(2)} ${dest.symbol}`,
-      },
-      advantage: {
-        extraReceivedUsd: extraReceivedUsd.toFixed(2),
-        extraReceivedFormatted: `+${dest.symbol} ${extraReceivedLocal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        percentSaved: amount > 0 ? (((abReceived - bankReceived) / Math.max(1, bankReceived)) * 100).toFixed(1) : '0',
-      },
-      savings: {
-        extraLocalFormatted: `+${dest.symbol} ${extraReceivedLocal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        extraUsdFormatted: `+$${extraReceivedUsd.toFixed(2)}`,
-        pctBetter: amount > 0 ? (((abReceived - bankReceived) / Math.max(1, bankReceived)) * 100).toFixed(1) : '0',
-      },
-    };
+  async resolveUsername(username) {
+    const clean = String(username || '').trim();
+    if (!clean) throw new Error('Enter an AssetBridge username.');
+    const headers = await getAuthHeaders();
+    const res = await fetch(
+      `${API_BASE_URL}/remittance/resolve-user?username=${encodeURIComponent(clean)}`,
+      { headers }
+    );
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.message || 'Could not verify username.');
+    }
+    return json.data;
   },
 
-  async sendRemittance(payload) {
-    try {
-      const res = await fetch(`${API_BASE_URL}/remittance/send`, {
+  async createQuote({ flowType, corridorCode, payoutRail, sendAmountUsdt }) {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/remittance/quotes`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        flowType,
+        corridorCode,
+        payoutRail,
+        sendAmountUsdt: String(sendAmountUsdt),
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.message || 'Failed to generate remittance quote.');
+    }
+    return json.data;
+  },
+
+  async createTransferIntent({
+    quoteId,
+    idempotencyKey,
+    recipientUsername,
+    recipientName,
+    recipientPhone,
+    note,
+  }) {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/remittance/transfers`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        quoteId,
+        idempotencyKey: idempotencyKey || generateIdempotencyKey('tx'),
+        recipientUsername,
+        recipientName,
+        recipientPhone,
+        note,
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.message || 'Could not initialize transfer intent.');
+    }
+    return json.data;
+  },
+
+  async approveTransfer(transferId, { riskAcknowledged = false } = {}) {
+    const headers = await getAuthHeaders();
+    const res = await fetch(
+      `${API_BASE_URL}/remittance/transfers/${encodeURIComponent(transferId)}/approve`,
+      {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const json = await res.json();
-      if (res.ok && json.data) return json.data;
-      throw new Error(json.message || 'Remittance transfer failed.');
-    } catch (error) {
-      throw new Error(`Remittance transfer failed: ${error.message}`);
+        headers,
+        body: JSON.stringify({ riskAcknowledged }),
+      }
+    );
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.message || 'Transfer approval failed.');
     }
+    return json.data;
+  },
+
+  async cancelTransfer(transferId) {
+    const headers = await getAuthHeaders();
+    const res = await fetch(
+      `${API_BASE_URL}/remittance/transfers/${encodeURIComponent(transferId)}/cancel`,
+      {
+        method: 'POST',
+        headers,
+      }
+    );
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.message || 'Failed to cancel transfer.');
+    }
+    return json.data;
+  },
+
+  async confirmBlockchainFunding(transferId, { txHash }) {
+    const headers = await getAuthHeaders();
+    const res = await fetch(
+      `${API_BASE_URL}/remittance/transfers/${encodeURIComponent(transferId)}/confirm-funding`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ txHash }),
+      }
+    );
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.message || 'On-chain funding verification failed.');
+    }
+    return json.data;
+  },
+
+  async refundTransfer(transferId, { reason = 'Sender requested refund' } = {}) {
+    const headers = await getAuthHeaders();
+    const res = await fetch(
+      `${API_BASE_URL}/remittance/transfers/${encodeURIComponent(transferId)}/refund`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ reason }),
+      }
+    );
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.message || 'Refund request failed.');
+    }
+    return json.data;
+  },
+
+  async listTransfers() {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_BASE_URL}/remittance/transfers`, { headers });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) return [];
+      return Array.isArray(json.data) ? json.data : [];
+    } catch {
+      return [];
+    }
+  },
+
+  // --- Gogo Claim Link Management (Authenticated Sender + Public Receiver) ---
+  async createGogoClaimLink({
+    quoteId,
+    idempotencyKey,
+    recipientName,
+    recipientPhone,
+    note,
+    riskAcknowledged = false,
+  }) {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/claims/create`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        quoteId,
+        idempotencyKey: idempotencyKey || generateIdempotencyKey('claim'),
+        recipientName,
+        recipientPhone,
+        note,
+        riskAcknowledged,
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.message || 'Failed to create Gogo claim link.');
+    }
+    return json.data;
+  },
+
+  async getSenderClaims() {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_BASE_URL}/claims/sender`, { headers });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(json.data)) return json.data;
+      return [];
+    } catch {
+      return [];
+    }
+  },
+
+  async refundClaimLink(claimId) {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/claims/${encodeURIComponent(claimId)}/refund`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({}),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.message || 'Failed to cancel or refund claim link.');
+    }
+    return json.data;
+  },
+
+  async getPublicClaim(claimId, lang = 'en') {
+    const res = await fetch(
+      `${API_BASE_URL}/claims/public/${encodeURIComponent(claimId)}?lang=${encodeURIComponent(lang)}`
+    );
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.message || 'Claim link not found or expired.');
+    }
+    return json.data;
+  },
+
+  async requestClaimOtp(claimId, { claimToken, phoneNumber }) {
+    const res = await fetch(`${API_BASE_URL}/claims/public/${encodeURIComponent(claimId)}/request-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ claimToken, phoneNumber }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.message || 'Failed to verify claim code and phone number.');
+    }
+    return json.data;
+  },
+
+  async verifyClaimOtp(claimId, { otpCode }) {
+    const res = await fetch(`${API_BASE_URL}/claims/public/${encodeURIComponent(claimId)}/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ otpCode }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.message || 'OTP verification failed.');
+    }
+    return json.data;
+  },
+
+  async confirmClaimPayout(
+    claimId,
+    { verificationSessionToken, payoutMethod, recipientWalletAddress }
+  ) {
+    const res = await fetch(`${API_BASE_URL}/claims/public/${encodeURIComponent(claimId)}/confirm-payout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        verificationSessionToken,
+        payoutMethod,
+        recipientWalletAddress,
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.message || 'Payout confirmation could not be completed.');
+    }
+    return json.data;
   },
 };
 
